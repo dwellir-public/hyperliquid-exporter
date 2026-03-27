@@ -24,21 +24,21 @@ var (
 )
 
 func printBuildInfo(w io.Writer) {
-	fmt.Fprint(w, "\nBuild Info:\n")
-	fmt.Fprintf(w, "  Version:    %s\n", version)
-	fmt.Fprintf(w, "  Commit:     %s\n", commit)
-	fmt.Fprintf(w, "  Build time: %s\n", buildTimeUTC)
+	_, _ = fmt.Fprint(w, "\nBuild Info:\n")
+	_, _ = fmt.Fprintf(w, "  Version:    %s\n", version)
+	_, _ = fmt.Fprintf(w, "  Commit:     %s\n", commit)
+	_, _ = fmt.Fprintf(w, "  Build time: %s\n", buildTimeUTC)
 }
 
 func printTopLevelUsage() {
 	w := flag.CommandLine.Output()
-	fmt.Fprint(w, "Usage: hl_exporter <command> [flags]\n")
-	fmt.Fprint(w, "\nCommands:\n")
-	fmt.Fprint(w, "  start       Start the Hyperliquid metrics exporter\n")
-	fmt.Fprint(w, "\nGlobal flags:\n")
-	fmt.Fprint(w, "  --help      Show this help message\n")
-	fmt.Fprint(w, "  --version   Print version and exit\n")
-	fmt.Fprint(w, "\nRun 'hl_exporter <command> --help' for flag details.\n")
+	_, _ = fmt.Fprint(w, "Usage: hl_exporter <command> [flags]\n")
+	_, _ = fmt.Fprint(w, "\nCommands:\n")
+	_, _ = fmt.Fprint(w, "  start       Start the Hyperliquid metrics exporter\n")
+	_, _ = fmt.Fprint(w, "\nGlobal flags:\n")
+	_, _ = fmt.Fprint(w, "  --help      Show this help message\n")
+	_, _ = fmt.Fprint(w, "  --version   Print version and exit\n")
+	_, _ = fmt.Fprint(w, "\nRun 'hl_exporter <command> --help' for flag details.\n")
 	printBuildInfo(w)
 }
 
@@ -67,9 +67,9 @@ func main() {
 	startCmd := flag.NewFlagSet("start", flag.ExitOnError)
 	startCmd.Usage = func() {
 		w := startCmd.Output()
-		fmt.Fprint(w, "Start the Hyperliquid metrics exporter.\n")
-		fmt.Fprint(w, "\nUsage: hl_exporter start [flags]\n")
-		fmt.Fprint(w, "\nFlags:\n")
+		_, _ = fmt.Fprint(w, "Start the Hyperliquid metrics exporter.\n")
+		_, _ = fmt.Fprint(w, "\nUsage: hl_exporter start [flags]\n")
+		_, _ = fmt.Fprint(w, "\nFlags:\n")
 		startCmd.PrintDefaults()
 		printBuildInfo(w)
 	}

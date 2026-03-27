@@ -47,7 +47,7 @@ func validatorHandler(count *atomic.Int32) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		count.Add(1)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(testSummaries)
+		_ = json.NewEncoder(w).Encode(testSummaries)
 	}
 }
 
@@ -165,7 +165,7 @@ func TestGetValidatorSummariesCached(t *testing.T) {
 	r := testResolver(t, validatorHandler(&count))
 
 	// first call populates cache
-	r.GetValidatorSummaries(context.Background(), false)
+	_, _ = r.GetValidatorSummaries(context.Background(), false)
 
 	// second call within 1min should use cache
 	summaries, err := r.GetValidatorSummaries(context.Background(), false)
@@ -184,8 +184,8 @@ func TestGetValidatorSummariesForceRefresh(t *testing.T) {
 	var count atomic.Int32
 	r := testResolver(t, validatorHandler(&count))
 
-	r.GetValidatorSummaries(context.Background(), false)
-	r.GetValidatorSummaries(context.Background(), true) // force
+	_, _ = r.GetValidatorSummaries(context.Background(), false)
+	_, _ = r.GetValidatorSummaries(context.Background(), true) // force
 
 	if count.Load() != 2 {
 		t.Errorf("request count = %d, want 2 (force should bypass cache)", count.Load())
@@ -199,7 +199,7 @@ func TestGetValidatorSummariesStaleFallback(t *testing.T) {
 		if n == 1 {
 			// first call succeeds
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(testSummaries)
+			_ = json.NewEncoder(w).Encode(testSummaries)
 		} else {
 			// subsequent calls fail
 			w.WriteHeader(http.StatusInternalServerError)
@@ -207,7 +207,7 @@ func TestGetValidatorSummariesStaleFallback(t *testing.T) {
 	})
 
 	// populate cache
-	r.GetValidatorSummaries(context.Background(), false)
+	_, _ = r.GetValidatorSummaries(context.Background(), false)
 
 	// expire cache by backdating lastUpdate
 	r.mu.Lock()

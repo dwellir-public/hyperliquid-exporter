@@ -76,7 +76,7 @@ func TestLevelFiltering(t *testing.T) {
 	warnBuf := captureOutput(t, warningLogger)
 	errBuf := captureOutput(t, errorLogger)
 
-	SetLogLevel("warning")
+	_ = SetLogLevel("warning")
 
 	Debug("should not appear")
 	Info("should not appear")

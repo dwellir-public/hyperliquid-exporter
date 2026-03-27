@@ -16,7 +16,7 @@ func isolateEnv(t *testing.T) {
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chdir(orig) })
+	t.Cleanup(func() { _ = os.Chdir(orig) })
 }
 
 func TestDefaultsNilFlags(t *testing.T) {

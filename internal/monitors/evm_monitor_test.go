@@ -22,11 +22,11 @@ func TestProcessBlockData(t *testing.T) {
 			"Standard": map[string]any{
 				"header": map[string]any{
 					"header": map[string]any{
-						"number":         "0x64",       // 100
-						"gasLimit":       "0x1e8480",   // 2_000_000
-						"gasUsed":        "0xf4240",    // 1_000_000
-						"timestamp":      "0x6789abcd",
-						"baseFeePerGas":  "0x3b9aca00", // 1 gwei
+						"number":        "0x64",     // 100
+						"gasLimit":      "0x1e8480", // 2_000_000
+						"gasUsed":       "0xf4240",  // 1_000_000
+						"timestamp":     "0x6789abcd",
+						"baseFeePerGas": "0x3b9aca00", // 1 gwei
 					},
 				},
 				"body": map[string]any{
@@ -65,9 +65,9 @@ func TestProcessBlockData_HighGas(t *testing.T) {
 			"High": map[string]any{
 				"header": map[string]any{
 					"header": map[string]any{
-						"number":   "0xc8",       // 200
-						"gasLimit": "0x1c9c380",  // 30_000_000
-						"gasUsed":  "0xe4e1c0",   // 15_000_000
+						"number":   "0xc8",      // 200
+						"gasLimit": "0x1c9c380", // 30_000_000
+						"gasUsed":  "0xe4e1c0",  // 15_000_000
 					},
 				},
 				"body": map[string]any{
@@ -208,8 +208,8 @@ func TestProcessEVMBlockAndReceiptsLine(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "valid line with block",
-			line: `["2025-01-01T00:00:00.000000000Z", {"block":{"Standard":{"header":{"header":{"number":"0x1","gasLimit":"0x1e8480","gasUsed":"0x0"}},"body":{"transactions":[]}}}}]`,
+			name:    "valid line with block",
+			line:    `["2025-01-01T00:00:00.000000000Z", {"block":{"Standard":{"header":{"header":{"number":"0x1","gasLimit":"0x1e8480","gasUsed":"0x0"}},"body":{"transactions":[]}}}}]`,
 			wantErr: false,
 		},
 		{

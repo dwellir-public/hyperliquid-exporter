@@ -17,7 +17,7 @@ func TestIsAddressTruncated(t *testing.T) {
 		{"0xAbCdEf0123456789AbCdEf0123456789AbCdEf01", false}, // full
 		{"garbage", false},
 		{"", false},
-		{"0x12..34", false},   // too few hex before ..
+		{"0x12..34", false},    // too few hex before ..
 		{"0x1234.5678", false}, // single dot
 	}
 	for _, tt := range tests {

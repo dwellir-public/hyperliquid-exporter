@@ -23,7 +23,7 @@ type ContractInfo struct {
 
 // handles contract name resolution WITH caching
 type Resolver struct {
-	cache *cache.LRUCache
+	cache   *cache.LRUCache
 	client  *http.Client
 	baseURL string
 

@@ -57,7 +57,7 @@ func TestNestedDirs(t *testing.T) {
 		t.Fatal(err)
 	}
 	past := time.Now().Add(-time.Hour)
-	os.Chtimes(old, past, past)
+	_ = os.Chtimes(old, past, past)
 
 	// newer file in subdirectory
 	newest := filepath.Join(sub, "newest.txt")

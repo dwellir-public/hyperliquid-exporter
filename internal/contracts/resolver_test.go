@@ -148,7 +148,7 @@ func TestCacheTokenNormalizesAddress(t *testing.T) {
 func TestFetchAndCacheToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/tokens/") {
-			json.NewEncoder(w).Encode(TokenResponse{
+			_ = json.NewEncoder(w).Encode(TokenResponse{
 				Address: "0xabcd",
 				Name:    "Fetched Token",
 				Symbol:  "FT",
@@ -180,7 +180,7 @@ func TestFetchAndCacheSmartContract(t *testing.T) {
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/smart-contracts/") {
-			json.NewEncoder(w).Encode(SmartContractResponse{
+			_ = json.NewEncoder(w).Encode(SmartContractResponse{
 				Address: struct {
 					Hash string `json:"hash"`
 					Name string `json:"name"`
@@ -227,7 +227,7 @@ func TestFetchAndCacheUnknown(t *testing.T) {
 func TestFetchWorkerProcessesQueue(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/tokens/") {
-			json.NewEncoder(w).Encode(TokenResponse{
+			_ = json.NewEncoder(w).Encode(TokenResponse{
 				Address: "0xabcd",
 				Name:    "Async Token",
 				Symbol:  "AT",
@@ -274,7 +274,7 @@ func TestFetchWorkerDedup(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reqCount.Add(1)
 		if strings.HasPrefix(r.URL.Path, "/tokens/") {
-			json.NewEncoder(w).Encode(TokenResponse{
+			_ = json.NewEncoder(w).Encode(TokenResponse{
 				Address: "0xabcd",
 				Name:    "Token",
 				Symbol:  "T",

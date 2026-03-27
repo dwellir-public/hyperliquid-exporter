@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
@@ -16,22 +17,70 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/monitors"
 )
 
+var (
+	buildTimeUTC string
+	commit       string
+	version      string
+)
+
+func printBuildInfo(w io.Writer) {
+	fmt.Fprint(w, "\nBuild Info:\n")
+	fmt.Fprintf(w, "  Version:    %s\n", version)
+	fmt.Fprintf(w, "  Commit:     %s\n", commit)
+	fmt.Fprintf(w, "  Build time: %s\n", buildTimeUTC)
+}
+
+func printTopLevelUsage() {
+	w := flag.CommandLine.Output()
+	fmt.Fprint(w, "Usage: hl_exporter <command> [flags]\n")
+	fmt.Fprint(w, "\nCommands:\n")
+	fmt.Fprint(w, "  start       Start the Hyperliquid metrics exporter\n")
+	fmt.Fprint(w, "\nGlobal flags:\n")
+	fmt.Fprint(w, "  --help      Show this help message\n")
+	fmt.Fprint(w, "  --version   Print version and exit\n")
+	fmt.Fprint(w, "\nRun 'hl_exporter <command> --help' for flag details.\n")
+	printBuildInfo(w)
+}
+
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: hl_exporter start [options]")
-		fmt.Println()
-		fmt.Println("Run 'hl_exporter start --help' for a full list of flags.")
+		printTopLevelUsage()
+		os.Exit(1)
+	}
+
+	switch os.Args[1] {
+	case "--help", "-h", "help":
+		printTopLevelUsage()
+		os.Exit(0)
+	case "--version", "-version", "version":
+		fmt.Printf("hl_exporter version %s (commit %s, build time %s)\n",
+			version, commit, buildTimeUTC)
+		os.Exit(0)
+	case "start":
+		// handled below
+	default:
+		fmt.Fprintf(os.Stderr, "%q is not a valid command.\n\n", os.Args[1])
+		printTopLevelUsage()
 		os.Exit(1)
 	}
 
 	startCmd := flag.NewFlagSet("start", flag.ExitOnError)
+	startCmd.Usage = func() {
+		w := startCmd.Output()
+		fmt.Fprint(w, "Start the Hyperliquid metrics exporter.\n")
+		fmt.Fprint(w, "\nUsage: hl_exporter start [flags]\n")
+		fmt.Fprint(w, "\nFlags:\n")
+		startCmd.PrintDefaults()
+		printBuildInfo(w)
+	}
+
 	logLevel := startCmd.String("log-level", "info", "Log level (debug, info, warning, error)")
 	enableOTLP := startCmd.Bool("otlp", false, "Enable OTLP export")
 	otlpEndpoint := startCmd.String("otlp-endpoint", "", "OTLP endpoint (required when OTLP is enabled)")
 	nodeHome := startCmd.String("node-home", "", "Node home directory (overrides env var)")
 	nodeBinary := startCmd.String("node-binary", "", "Node binary path (overrides env var)")
 	alias := startCmd.String("alias", "", "Node alias (required when OTLP is enabled)")
-	chain := startCmd.String("chain", "", "Chain type (required when OTLP is enabled: 'mainnet' or 'testnet')")
+	chain := startCmd.String("chain", "", "Chain type ('mainnet' or 'testnet')")
 	otlpInsecure := startCmd.Bool("otlp-insecure", false, "Use insecure connection for OTLP")
 	enableEVM := startCmd.Bool("evm-metrics", false, "Enable EVM monitoring")
 	contractMetrics := startCmd.Bool("contract-metrics", false, "Enable per-contract transaction metrics")
@@ -39,14 +88,8 @@ func main() {
 	enableReplicaMetrics := startCmd.Bool("replica-metrics", false, "Enable replica commands transaction metrics")
 	enableValidatorRTT := startCmd.Bool("validator-rtt", false, "Enable validator RTT monitoring")
 
-	switch os.Args[1] {
-	case "start":
-		if err := startCmd.Parse(os.Args[2:]); err != nil {
-			fmt.Fprintf(os.Stderr, "error parsing flags: %v\n", err)
-			os.Exit(1)
-		}
-	default:
-		fmt.Printf("%q is not a valid command.\n", os.Args[1])
+	if err := startCmd.Parse(os.Args[2:]); err != nil {
+		fmt.Fprintf(os.Stderr, "error parsing flags: %v\n", err)
 		os.Exit(1)
 	}
 

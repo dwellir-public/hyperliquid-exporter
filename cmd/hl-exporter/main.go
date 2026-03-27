@@ -90,9 +90,9 @@ func main() {
 		EnableCoreTxMetrics:   false,
 		UseLiveState:          false,
 		EnableReplicaMetrics:  *enableReplicaMetrics,
-		ReplicaDataDir:        "", // Always use default
-		ReplicaBufferSize:     8,  // Always use default 8MB
-		EVMBlockTypeMetrics:   *enableEVM, // Always enable block type metrics when EVM is enabled
+		ReplicaDataDir:        "",                 // Always use default
+		ReplicaBufferSize:     8,                  // Always use default 8MB
+		EVMBlockTypeMetrics:   *enableEVM,         // Always enable block type metrics when EVM is enabled
 		EnableValidatorRTT:    enableValidatorRTT, // Use the bool pointer directly
 	}
 

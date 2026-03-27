@@ -198,7 +198,7 @@ func measureRTT(ctx context.Context, validator, ip string) {
 
 	for port := 4000; port <= 4010; port++ {
 		start := time.Now()
-		address := fmt.Sprintf("%s:%d", ip, port)
+		address := net.JoinHostPort(ip, fmt.Sprintf("%d", port))
 
 		conn, err := net.DialTimeout("tcp", address, 2*time.Second)
 		if err == nil {
@@ -253,7 +253,7 @@ func getTopValidators(n int) []string {
 	// get top N validators
 	count := min(n, len(validators))
 	topValidators := make([]string, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		topValidators[i] = validators[i].address
 	}
 

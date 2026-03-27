@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"strings"
 	"sync"
@@ -134,9 +135,7 @@ func (r *Resolver) GetSignerToValidatorMapping() map[string]string {
 
 	// Return a copy to prevent external modifications
 	mapping := make(map[string]string)
-	for k, v := range r.validatorCache.signerToValidator {
-		mapping[k] = v
-	}
+	maps.Copy(mapping, r.validatorCache.signerToValidator)
 	return mapping
 }
 
@@ -175,7 +174,7 @@ func (r *Resolver) updateValidatorCache(summaries []ValidatorSummary) {
 }
 
 // generic method for API calls
-func (r *Resolver) makeAPICall(ctx context.Context, endpoint string, request interface{}, response interface{}) error {
+func (r *Resolver) makeAPICall(ctx context.Context, endpoint string, request any, response any) error {
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return fmt.Errorf("failed to marshal request: %w", err)
@@ -193,7 +192,7 @@ func (r *Resolver) makeAPICall(ctx context.Context, endpoint string, request int
 	var resp *http.Response
 	var lastErr error
 
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := range 3 {
 		if attempt > 0 {
 			backoff := time.Duration(attempt*attempt) * time.Second
 			logger.DebugComponent("consensus-api", "Retrying API call after %v (attempt %d/3)", backoff, attempt+1)

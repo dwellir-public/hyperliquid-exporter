@@ -114,7 +114,7 @@ func formatComponent(component string) string {
 	return fmt.Sprintf("%s[%s]%s ", color, strings.ToUpper(component), reset)
 }
 
-func logWithLevel(logger *log.Logger, level, component, format string, v ...interface{}) {
+func logWithLevel(logger *log.Logger, level, component, format string, v ...any) {
 	timestamp := time.Now().Format("2006/01/02 15:04:05.000000")
 	message := fmt.Sprintf(format, v...)
 
@@ -144,50 +144,50 @@ func logWithLevel(logger *log.Logger, level, component, format string, v ...inte
 }
 
 // original functions for backward compatibility
-func Debug(format string, v ...interface{}) {
+func Debug(format string, v ...any) {
 	if currentLevel <= DEBUG {
 		logWithLevel(debugLogger, "DEBUG", "", format, v...)
 	}
 }
 
-func Info(format string, v ...interface{}) {
+func Info(format string, v ...any) {
 	if currentLevel <= INFO {
 		logWithLevel(infoLogger, "INFO", "", format, v...)
 	}
 }
 
-func Warning(format string, v ...interface{}) {
+func Warning(format string, v ...any) {
 	if currentLevel <= WARNING {
 		logWithLevel(warningLogger, "WARNING", "", format, v...)
 	}
 }
 
-func Error(format string, v ...interface{}) {
+func Error(format string, v ...any) {
 	if currentLevel <= ERROR {
 		logWithLevel(errorLogger, "ERROR", "", format, v...)
 	}
 }
 
 // new component-aware logging functions
-func DebugComponent(component, format string, v ...interface{}) {
+func DebugComponent(component, format string, v ...any) {
 	if currentLevel <= DEBUG {
 		logWithLevel(debugLogger, "DEBUG", component, format, v...)
 	}
 }
 
-func InfoComponent(component, format string, v ...interface{}) {
+func InfoComponent(component, format string, v ...any) {
 	if currentLevel <= INFO {
 		logWithLevel(infoLogger, "INFO", component, format, v...)
 	}
 }
 
-func WarningComponent(component, format string, v ...interface{}) {
+func WarningComponent(component, format string, v ...any) {
 	if currentLevel <= WARNING {
 		logWithLevel(warningLogger, "WARNING", component, format, v...)
 	}
 }
 
-func ErrorComponent(component, format string, v ...interface{}) {
+func ErrorComponent(component, format string, v ...any) {
 	if currentLevel <= ERROR {
 		logWithLevel(errorLogger, "ERROR", component, format, v...)
 	}

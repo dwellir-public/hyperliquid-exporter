@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"sync"
 	"time"
@@ -292,11 +293,11 @@ func (m *ReplicaMonitor) processBlock(block *replica.BlockMetrics) {
 }
 
 // returns current statistics
-func (m *ReplicaMonitor) GetStats() map[string]interface{} {
+func (m *ReplicaMonitor) GetStats() map[string]any {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	stats := map[string]interface{}{
+	stats := map[string]any{
 		"last_round": m.lastRound,
 		"last_time":  m.lastTime,
 	}
@@ -312,9 +313,7 @@ func (m *ReplicaMonitor) GetVerificationStats() ReplicaVerificationStats {
 	// create a copy to avoid race conditions
 	statsCopy := m.verificationStats
 	statsCopy.ActionCounts = make(map[string]int64)
-	for k, v := range m.verificationStats.ActionCounts {
-		statsCopy.ActionCounts[k] = v
-	}
+	maps.Copy(statsCopy.ActionCounts, m.verificationStats.ActionCounts)
 
 	return statsCopy
 }

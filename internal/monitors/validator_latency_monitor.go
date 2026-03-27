@@ -37,8 +37,8 @@ type LatencyEntry struct {
 
 // EMAEntry represents the exponential moving average data
 type EMAEntry struct {
-	Time      string          `json:"time"`
-	Latencies [][]interface{} `json:"latencies"`
+	Time      string  `json:"time"`
+	Latencies [][]any `json:"latencies"`
 }
 
 // new validator latency monitor
@@ -256,7 +256,7 @@ func (m *ValidatorLatencyMonitor) processEMAFile() error {
 	m.lastEMATime = entryTime
 
 	// parse latencies array
-	var latencies [][]interface{}
+	var latencies [][]any
 	if err := json.Unmarshal(data[1], &latencies); err != nil {
 		return fmt.Errorf("failed to parse latencies: %w", err)
 	}

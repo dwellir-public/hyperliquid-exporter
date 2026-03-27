@@ -27,7 +27,7 @@ type NodeIdentity struct {
 var (
 	nodeIdentity  NodeIdentity
 	metricsMutex  sync.RWMutex
-	currentValues = make(map[api.Observable]interface{})
+	currentValues = make(map[api.Observable]any)
 	labeledValues = make(map[api.Observable]map[string]labeledValue)
 	callbacks     []api.Registration
 	// add cleanup ticker for labeledValues

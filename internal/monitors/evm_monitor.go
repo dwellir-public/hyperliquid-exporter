@@ -169,7 +169,7 @@ func StartEVMMonitor(ctx context.Context, cfg config.Config, errCh chan<- error)
 }
 
 func processEVMBlockAndReceiptsLine(line string) error {
-	var data []interface{}
+	var data []any
 	if err := json.Unmarshal([]byte(line), &data); err != nil {
 		return fmt.Errorf("error unmarshaling EVM data: %w", err)
 	}
@@ -193,7 +193,7 @@ func processEVMBlockAndReceiptsLine(line string) error {
 
 	blockData := data[1]
 
-	var receiptsData interface{}
+	var receiptsData any
 	if len(data) >= 3 {
 		receiptsData = data[2]
 		logger.DebugComponent("evm", "Line has receipts data: %v", receiptsData != nil)
@@ -219,21 +219,21 @@ func processEVMBlockAndReceiptsLine(line string) error {
 	return nil
 }
 
-func processBlockData(blockData interface{}, isoTimestamp time.Time) (string, error) {
-	blockMap, ok := blockData.(map[string]interface{})
+func processBlockData(blockData any, isoTimestamp time.Time) (string, error) {
+	blockMap, ok := blockData.(map[string]any)
 	if !ok {
 		return "", fmt.Errorf("invalid block data format")
 	}
 
-	block, ok := blockMap["block"].(map[string]interface{})
+	block, ok := blockMap["block"].(map[string]any)
 	if !ok {
 		return "", fmt.Errorf("missing block field")
 	}
 
 	// support different block formats
-	var blockContent map[string]interface{}
+	var blockContent map[string]any
 	for _, v := range block {
-		blockContent, ok = v.(map[string]interface{})
+		blockContent, ok = v.(map[string]any)
 		if ok {
 			break
 		}
@@ -244,12 +244,12 @@ func processBlockData(blockData interface{}, isoTimestamp time.Time) (string, er
 	}
 
 	// extract header info
-	headerWrapper, ok := blockContent["header"].(map[string]interface{})
+	headerWrapper, ok := blockContent["header"].(map[string]any)
 	if !ok {
 		return "", fmt.Errorf("missing header field")
 	}
 
-	header, ok := headerWrapper["header"].(map[string]interface{})
+	header, ok := headerWrapper["header"].(map[string]any)
 	if !ok {
 		return "", fmt.Errorf("missing inner header field")
 	}
@@ -355,7 +355,7 @@ func processBlockData(blockData interface{}, isoTimestamp time.Time) (string, er
 	}
 
 	// process transactions
-	if body, ok := blockContent["body"].(map[string]interface{}); ok {
+	if body, ok := blockContent["body"].(map[string]any); ok {
 		if err := processTransactions(body, blockType); err != nil {
 			logger.Debug("error processing transactions: %v", err)
 		}
@@ -365,8 +365,8 @@ func processBlockData(blockData interface{}, isoTimestamp time.Time) (string, er
 }
 
 // extracts transaction metrics from the block body
-func processTransactions(body map[string]interface{}, blockType string) error {
-	transactions, ok := body["transactions"].([]interface{})
+func processTransactions(body map[string]any, blockType string) error {
+	transactions, ok := body["transactions"].([]any)
 	if !ok {
 		return nil // No transactions in block
 	}
@@ -383,13 +383,13 @@ func processTransactions(body map[string]interface{}, blockType string) error {
 	var maxPriorityFeeWei int64
 
 	for _, tx := range transactions {
-		txMap, ok := tx.(map[string]interface{})
+		txMap, ok := tx.(map[string]any)
 		if !ok {
 			continue
 		}
 
 		// extract transaction details
-		if transaction, ok := txMap["transaction"].(map[string]interface{}); ok {
+		if transaction, ok := txMap["transaction"].(map[string]any); ok {
 			// process transaction type and details
 			for txType, txData := range transaction {
 				if blockTypeMetricsEnabled && blockType != "" {
@@ -398,7 +398,7 @@ func processTransactions(body map[string]interface{}, blockType string) error {
 					metrics.IncrementEVMTxType(txType)
 				}
 
-				if txDataMap, ok := txData.(map[string]interface{}); ok {
+				if txDataMap, ok := txData.(map[string]any); ok {
 					// check for contract creation (empty or zero 'to' address)
 					if to, ok := txDataMap["to"].(string); ok {
 						addr := strings.ToLower(to)
@@ -485,14 +485,14 @@ func processTransactions(body map[string]interface{}, blockType string) error {
 	return nil
 }
 
-func processReceiptsData(receiptsData interface{}, blockType string) error {
-	receiptsMap, ok := receiptsData.(map[string]interface{})
+func processReceiptsData(receiptsData any, blockType string) error {
+	receiptsMap, ok := receiptsData.(map[string]any)
 	if !ok {
 		logger.DebugComponent("evm", "Receipts data is not a map: %T", receiptsData)
 		return fmt.Errorf("invalid receipts format")
 	}
 
-	receipts, ok := receiptsMap["receipts"].([]interface{})
+	receipts, ok := receiptsMap["receipts"].([]any)
 	if !ok {
 		logger.DebugComponent("evm", "No receipts array in receipts map")
 		return nil // No receipts

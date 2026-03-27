@@ -116,7 +116,7 @@ func StartRoundAdvanceMonitor(ctx context.Context, cfg config.Config, errCh chan
 }
 
 func parseRoundAdvanceLine(line string) error {
-	var outer []interface{}
+	var outer []any
 	if err := json.Unmarshal([]byte(line), &outer); err != nil {
 		return fmt.Errorf("json unmarshal: %w", err)
 	}
@@ -130,7 +130,7 @@ func parseRoundAdvanceLine(line string) error {
 		return nil // not a round_advance line – silently ignore
 	}
 
-	payload, ok := outer[1].(map[string]interface{})
+	payload, ok := outer[1].(map[string]any)
 	if !ok {
 		return fmt.Errorf("payload not object")
 	}

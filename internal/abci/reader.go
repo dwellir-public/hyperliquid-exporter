@@ -117,7 +117,7 @@ func (r *Reader) ReadContextWithAccounts(filePath string) (*ContextInfo, int64, 
 				State2 struct {
 					EvmDb struct {
 						InMemory struct {
-							Accounts []interface{} `msgpack:"accounts"`
+							Accounts []any `msgpack:"accounts"`
 						} `msgpack:"InMemory"`
 					} `msgpack:"evm_db"`
 				} `msgpack:"state2"`
@@ -161,7 +161,7 @@ func (r *Reader) ReadValidatorProfiles(filePath string) ([]ValidatorProfile, err
 	var data struct {
 		Exchange struct {
 			Consensus struct {
-				ValidatorToProfile [][]interface{} `msgpack:"validator_to_profile"`
+				ValidatorToProfile [][]any `msgpack:"validator_to_profile"`
 			} `msgpack:"consensus"`
 		} `msgpack:"exchange"`
 	}
@@ -188,14 +188,14 @@ func (r *Reader) ReadValidatorProfiles(filePath string) ([]ValidatorProfile, err
 		}
 
 		// 2nd is profile map
-		profileData, ok := entry[1].(map[string]interface{})
+		profileData, ok := entry[1].(map[string]any)
 		if !ok {
 			continue
 		}
 
 		// extract node IP
 		var ip string
-		if nodeIPData, ok := profileData["node_ip"].(map[string]interface{}); ok {
+		if nodeIPData, ok := profileData["node_ip"].(map[string]any); ok {
 			if ipValue, ok := nodeIPData["Ip"].(string); ok {
 				ip = ipValue
 			}

@@ -18,7 +18,7 @@ type LRUCache struct {
 // holds cached value and metadata
 type cacheEntry struct {
 	key       string
-	value     interface{}
+	value     any
 	expiresAt time.Time
 }
 
@@ -33,7 +33,7 @@ func NewLRUCache(capacity int, ttl time.Duration) *LRUCache {
 }
 
 // retrieves value from cache
-func (c *LRUCache) Get(key string) (interface{}, bool) {
+func (c *LRUCache) Get(key string) (any, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -56,7 +56,7 @@ func (c *LRUCache) Get(key string) (interface{}, bool) {
 }
 
 // adds/updates value in cache
-func (c *LRUCache) Set(key string, value interface{}) {
+func (c *LRUCache) Set(key string, value any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -130,11 +130,11 @@ func (c *LRUCache) removeElement(elem *list.Element) {
 }
 
 // returns all keys in cache
-func (c *LRUCache) GetAll() map[string]interface{} {
+func (c *LRUCache) GetAll() map[string]any {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	result := make(map[string]interface{})
+	result := make(map[string]any)
 	for key, elem := range c.items {
 		entry := elem.Value.(*cacheEntry)
 		// Skip expired entries

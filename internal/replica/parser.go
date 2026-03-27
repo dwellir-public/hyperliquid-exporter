@@ -22,7 +22,7 @@ func NewParser(bufferSizeMB int) *Parser {
 		bufferSize: bufferSizeMB * 1024 * 1024,
 	}
 	p.blockPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &ReplicaBlock{}
 		},
 	}
@@ -246,25 +246,25 @@ func countJSONArrayElements(data json.RawMessage) int {
 }
 
 // counts the number of operations within an action
-func (p *Parser) countOperations(actionType string, actionData map[string]interface{}) int {
+func (p *Parser) countOperations(actionType string, actionData map[string]any) int {
 	switch actionType {
 	case ActionTypeOrder, ActionTypeTwapOrder:
 		// count individual orders
-		if orders, ok := actionData["orders"].([]interface{}); ok {
+		if orders, ok := actionData["orders"].([]any); ok {
 			return len(orders)
 		}
 		return 1
 
 	case ActionTypeCancel, ActionTypeCancelByCloid:
 		// count individual cancellations
-		if cancels, ok := actionData["cancels"].([]interface{}); ok {
+		if cancels, ok := actionData["cancels"].([]any); ok {
 			return len(cancels)
 		}
 		return 1
 
 	case ActionTypeBatchModify:
 		// count individual modifications
-		if modifies, ok := actionData["modifies"].([]interface{}); ok {
+		if modifies, ok := actionData["modifies"].([]any); ok {
 			return len(modifies)
 		}
 		return 1

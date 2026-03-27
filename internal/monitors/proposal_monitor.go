@@ -112,13 +112,13 @@ func parseProposalLine(ctx context.Context, line string) error {
 		return nil
 	}
 
-	var data map[string]interface{}
+	var data map[string]any
 	if err := json.Unmarshal([]byte(line), &data); err != nil {
 		// skip malformed JSON lines silently
 		return nil
 	}
 
-	abciBlock, ok := data["abci_block"].(map[string]interface{})
+	abciBlock, ok := data["abci_block"].(map[string]any)
 	if !ok {
 		return fmt.Errorf("ABCI block not found in proposal line")
 	}

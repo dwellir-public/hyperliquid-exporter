@@ -157,7 +157,7 @@ func monitorBlockState(ctx context.Context, cfg config.Config, errCh chan<- erro
 }
 
 func parseBlockTimeLine(ctx context.Context, line string, stateType string) error {
-	var data map[string]interface{}
+	var data map[string]any
 	if err := json.Unmarshal([]byte(line), &data); err != nil {
 		return fmt.Errorf("error parsing block time line: %w", err)
 	}
@@ -328,7 +328,7 @@ func monitorLegacyBlockState(ctx context.Context, cfg config.Config, errCh chan<
 
 // for backward compatibility
 func parseLegacyBlockTimeLine(ctx context.Context, line string) error {
-	var data map[string]interface{}
+	var data map[string]any
 	if err := json.Unmarshal([]byte(line), &data); err != nil {
 		return fmt.Errorf("error parsing block time line: %w", err)
 	}

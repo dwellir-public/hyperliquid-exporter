@@ -91,7 +91,7 @@ func NewResolver() *Resolver {
 
 	// start worker pool with limited concurrency
 	const numWorkers = 5
-	for i := 0; i < numWorkers; i++ {
+	for range numWorkers {
 		r.wg.Add(1)
 		go r.fetchWorker()
 	}

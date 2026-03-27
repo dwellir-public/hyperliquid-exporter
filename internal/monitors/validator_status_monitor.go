@@ -19,9 +19,9 @@ import (
 type StatusData struct {
 	Timestamp string `json:"0"`
 	Data      struct {
-		HomeValidator string          `json:"home_validator"`
-		Round         int64           `json:"round"`
-		CurrentStakes [][]interface{} `json:"current_stakes"`
+		HomeValidator string  `json:"home_validator"`
+		Round         int64   `json:"round"`
+		CurrentStakes [][]any `json:"current_stakes"`
 	} `json:"1"`
 }
 
@@ -121,9 +121,9 @@ func processValidatorStatusLine(line string) error {
 
 	// parse the second element (index 1) which contains the actual data
 	var data struct {
-		HomeValidator string          `json:"home_validator"`
-		Round         int64           `json:"round"`
-		CurrentStakes [][]interface{} `json:"current_stakes"`
+		HomeValidator string  `json:"home_validator"`
+		Round         int64   `json:"round"`
+		CurrentStakes [][]any `json:"current_stakes"`
 	}
 
 	if err := json.Unmarshal(rawData[1], &data); err != nil {
@@ -267,8 +267,8 @@ func GetValidatorStatus(nodeHome string) (string, bool) {
 	}
 
 	var data struct {
-		HomeValidator string          `json:"home_validator"`
-		CurrentStakes [][]interface{} `json:"current_stakes"`
+		HomeValidator string  `json:"home_validator"`
+		CurrentStakes [][]any `json:"current_stakes"`
 	}
 
 	if err := json.Unmarshal(rawData[1], &data); err != nil {
@@ -335,7 +335,7 @@ func PopulateSignerMappings(nodeHome string) error {
 	}
 
 	var data struct {
-		CurrentStakes [][]interface{} `json:"current_stakes"`
+		CurrentStakes [][]any `json:"current_stakes"`
 	}
 
 	if err := json.Unmarshal(rawData[1], &data); err != nil {

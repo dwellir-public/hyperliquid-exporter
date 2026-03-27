@@ -18,13 +18,16 @@ make build
 ./bin/hl_exporter start --chain mainnet [OPTIONS]
 
 OPTIONS:
-  --replica-metrics          # Transaction metrics (requires node --replica-cmds-style)
-  --evm-metrics             # EVM chain metrics
-  --contract-metrics        # Per-contract transaction tracking
-  --otlp                    # Enable OTLP export (requires --alias and --otlp-endpoint)
-  --alias "validator-name"  # Node alias for OTLP
-  --otlp-endpoint "url"     # OTLP endpoint URL
+  --chain              Chain type: 'mainnet' or 'testnet' (required)
+  --replica-metrics    Transaction metrics (requires node --replica-cmds-style)
+  --evm-metrics        EVM chain metrics
+  --contract-metrics   Per-contract transaction tracking
+  --contract-metrics-limit N  Max contract labels to retain (default: 20)
+  --validator-rtt      Enable validator RTT monitoring
+  --otlp               Enable OTLP export (requires --alias and --otlp-endpoint)
 ```
+
+Run `./bin/hl_exporter start --help` for a complete list of flags.
 
 Example: `./bin/hl_exporter start --chain mainnet --replica-metrics --evm-metrics`.
 
@@ -45,17 +48,13 @@ Description=HyperLiquid Prometheus Exporter
 After=network.target
 
 [Service]
-# The working directory where the script is located
 WorkingDirectory=$HOME/hyperliquid-exporter
 
-# Command to execute the script
-ExecStart=/usr/local/bin/hl_exporter start --chain $CHAIN [options]
+ExecStart=$HOME/hyperliquid-exporter/bin/hl_exporter start --chain $CHAIN [options]
 
-# Restart the service if it crashes
 Restart=always
 RestartSec=10
 
-# Run the service as the current user
 User=$USER
 Group=$USER
 
@@ -67,21 +66,12 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/hyperliquid-exporter.
 
 Use Docker to run `hl_exporter` in a container:
 
-1. Edit the `docker-compose.yml` to change the local hyperliquid home folder :
-Example : Replace
-`- <HYPERLIQUID LOCAL HOME>:/hl:ro`
-by
-`- /home/hyperliquid/hl:/hl:ro` 
+1. Edit `docker-compose.yml` to set the correct paths for your Hyperliquid node data directory and binary.
 
-2. Build the image and run the container :
+2. Build the image and run the container:
 ```bash
 docker compose up -d
 ```
-
-
-## Grafana Dashboard
-
-A Grafana dashboard is available at `grafana/dashboard.json`. Import it into your Grafana instance for visualization of all metrics.
 
 ## Documentation
 

@@ -6,7 +6,7 @@ services:
       - "start"
       - "--log-level=info"
       - "--chain=testnet"
-      - "--replica-metrics=true" # Enable replica monitor for core tx metrics
+      - "--replica-metrics" # Enable replica monitor for core tx metrics
     volumes:
       - /home/ubuntu/hl:/hl:ro # Hyperliquid node data directory
       - /home/ubuntu/hl-node:/bin/hl-node # Hyperliquid node binary

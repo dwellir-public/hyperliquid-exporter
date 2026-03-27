@@ -18,28 +18,9 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: hl_exporter <command> [options]")
-		fmt.Println("Commands:")
-		fmt.Println("  start    Start the Hyperliquid exporter")
-		fmt.Println("\nOptions:")
-		fmt.Println("  --log-level        Set the logging level (default: \"debug\")")
-		fmt.Println("  --enable-prom      Enable Prometheus endpoint (default: true)")
-		fmt.Println("  --disable-prom     Disable Prometheus endpoint")
-		fmt.Println("  --enable-otlp      Enable OTLP export (default: false)")
-		fmt.Println("  --otlp-endpoint    OTLP endpoint (default: otel.hyperliquid.validao.xyz)")
-		fmt.Println("  --node-home        Node home directory (overrides env var)")
-		fmt.Println("  --node-binary      Node binary path (overrides env var)")
-		fmt.Println("  --alias            Node alias (required when OTLP is enabled)")
-		fmt.Println("  --chain            Chain type (required when OTLP is enabled: 'mainnet' or 'testnet')")
-		fmt.Println("  --otlp-insecure    Use insecure connection for OTLP (default: false)")
-		fmt.Println("  --evm              Enable EVM monitoring (default: false)")
-		fmt.Println("  --enable-contract-metrics Enable per-contract transaction metrics (default: false)")
-		fmt.Println("  --contract-metrics-limit Maximum number of individual contract labels to retain")
-		fmt.Println("  --evm-block-type-metrics Enable block type labels (standard/high) for EVM metrics (default: false)")
-		fmt.Println("  --enable-replica-metrics Enable replica commands transaction metrics (default: false)")
-		fmt.Println("  --replica-data-dir Directory containing replica_cmds files (default: $NODE_HOME/data/replica_cmds)")
-		fmt.Println("  --replica-buffer-size Buffer size in MB for parsing replica files (default: 8)")
-		fmt.Println("  --enable-validator-rtt Enable validator RTT monitoring (true/false/auto, default: auto)")
+		fmt.Println("Usage: hl_exporter start [options]")
+		fmt.Println()
+		fmt.Println("Run 'hl_exporter start --help' for a full list of flags.")
 		os.Exit(1)
 	}
 

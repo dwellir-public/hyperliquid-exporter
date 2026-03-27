@@ -34,9 +34,6 @@ var (
 	cleanupTicker *time.Ticker
 )
 
-// TODO commonLabels holds the common labels to be added to all metrics
-var commonLabels []attribute.KeyValue
-
 // signerMap maps signer addr -> val address
 // using LRU cache
 var signerMap *cache.LRUCache

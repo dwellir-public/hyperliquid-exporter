@@ -71,7 +71,7 @@ func StartProposalMonitor(ctx context.Context, cfg config.Config, errCh chan<- e
 						_, err = file.Seek(0, io.SeekEnd)
 						if err != nil {
 							errCh <- fmt.Errorf("error seeking to end of file: %w", err)
-							file.Close()
+							_ = file.Close()
 							time.Sleep(1 * time.Second)
 							continue
 						}

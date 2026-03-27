@@ -23,8 +23,7 @@ type Resolver struct {
 	chain   string
 
 	// Caches
-	validatorCache      *ValidatorCache
-	lastValidatorUpdate time.Time
+	validatorCache *ValidatorCache
 }
 
 // stores validator summaries with update tracking
@@ -209,7 +208,7 @@ func (r *Resolver) makeAPICall(ctx context.Context, endpoint string, request any
 			continue
 		}
 
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)

@@ -49,10 +49,6 @@ func setValidatorData(address string, data *validatorData) {
 	validatorDataCache.Set(address, data)
 }
 
-func deleteValidatorData(address string) {
-	validatorDataCache.Delete(address)
-}
-
 func StartValidatorIPMonitor(ctx context.Context, cfg config.Config, errCh chan<- error) {
 	// init LRU cache for validator data
 	validatorDataCache = cache.NewLRUCache(1000, 24*time.Hour)
@@ -204,7 +200,7 @@ func measureRTT(ctx context.Context, validator, ip string) {
 		if err == nil {
 			latency = float64(time.Since(start).Microseconds())
 			success = true
-			conn.Close()
+			_ = conn.Close()
 			break
 		}
 	}

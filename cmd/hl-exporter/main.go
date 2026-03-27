@@ -60,7 +60,10 @@ func main() {
 
 	switch os.Args[1] {
 	case "start":
-		startCmd.Parse(os.Args[2:])
+		if err := startCmd.Parse(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "error parsing flags: %v\n", err)
+			os.Exit(1)
+		}
 	default:
 		fmt.Printf("%q is not a valid command.\n", os.Args[1])
 		os.Exit(1)

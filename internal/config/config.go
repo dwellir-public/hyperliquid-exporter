@@ -79,6 +79,16 @@ func LoadConfig(flags *Flags) Config {
 	// always default buffer size
 	replicaBufferSize := 8 // 8MB default
 
+	if flags == nil {
+		return Config{
+			NodeHome:               nodeHome,
+			NodeBinary:             nodeBinary,
+			LiveStateCheckInterval: 5 * time.Second,
+			ReplicaDataDir:         replicaDataDir,
+			ReplicaBufferSize:      replicaBufferSize,
+		}
+	}
+
 	config := Config{
 		NodeHome:               nodeHome,
 		NodeBinary:             nodeBinary,
@@ -99,36 +109,33 @@ func LoadConfig(flags *Flags) Config {
 		LogFormat:              flags.LogFormat,
 	}
 
-	// override with flags if they're provided
-	if flags != nil {
-		if flags.NodeHome != "" {
-			config.NodeHome = flags.NodeHome
-		}
-		if flags.NodeBinary != "" {
-			config.NodeBinary = flags.NodeBinary
-		}
-		if flags.Chain != "" {
-			config.Chain = flags.Chain
-		}
-		if flags.EnableContractMetrics != config.EnableContractMetrics {
-			config.EnableContractMetrics = flags.EnableContractMetrics
-		}
-		if flags.ContractMetricsLimit != config.ContractMetricsLimit {
-			config.ContractMetricsLimit = flags.ContractMetricsLimit
-		}
-		config.EVMBlockTypeMetrics = config.EnableEVM
-		if flags.EnableCoreTxMetrics != config.EnableCoreTxMetrics {
-			config.EnableCoreTxMetrics = flags.EnableCoreTxMetrics
-		}
-		if flags.UseLiveState != config.UseLiveState {
-			config.UseLiveState = flags.UseLiveState
-		}
-		if flags.EnableReplicaMetrics != config.EnableReplicaMetrics {
-			config.EnableReplicaMetrics = flags.EnableReplicaMetrics
-		}
-		if flags.EnableValidatorRTT != nil {
-			config.EnableValidatorRTT = *flags.EnableValidatorRTT
-		}
+	if flags.NodeHome != "" {
+		config.NodeHome = flags.NodeHome
+	}
+	if flags.NodeBinary != "" {
+		config.NodeBinary = flags.NodeBinary
+	}
+	if flags.Chain != "" {
+		config.Chain = flags.Chain
+	}
+	if flags.EnableContractMetrics != config.EnableContractMetrics {
+		config.EnableContractMetrics = flags.EnableContractMetrics
+	}
+	if flags.ContractMetricsLimit != config.ContractMetricsLimit {
+		config.ContractMetricsLimit = flags.ContractMetricsLimit
+	}
+	config.EVMBlockTypeMetrics = config.EnableEVM
+	if flags.EnableCoreTxMetrics != config.EnableCoreTxMetrics {
+		config.EnableCoreTxMetrics = flags.EnableCoreTxMetrics
+	}
+	if flags.UseLiveState != config.UseLiveState {
+		config.UseLiveState = flags.UseLiveState
+	}
+	if flags.EnableReplicaMetrics != config.EnableReplicaMetrics {
+		config.EnableReplicaMetrics = flags.EnableReplicaMetrics
+	}
+	if flags.EnableValidatorRTT != nil {
+		config.EnableValidatorRTT = *flags.EnableValidatorRTT
 	}
 
 	return config

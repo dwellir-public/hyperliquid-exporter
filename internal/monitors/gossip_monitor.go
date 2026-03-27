@@ -107,7 +107,7 @@ func (m *GossipMonitor) processGossipFile(filePath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open gossip file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// track the latest peer status
 	var verifiedCount, unverifiedCount int64
@@ -206,15 +206,6 @@ func (m *GossipMonitor) processGossipFile(filePath string) error {
 	}
 
 	return nil
-}
-
-// processes the latest gossip log file (kept for compatibility)
-func (m *GossipMonitor) processLatestGossipFile() error {
-	filePath, err := m.getLatestGossipLogFile()
-	if err != nil {
-		return fmt.Errorf("failed to get latest gossip file: %w", err)
-	}
-	return m.processGossipFile(filePath)
 }
 
 // returns the path to the latest gossip log file

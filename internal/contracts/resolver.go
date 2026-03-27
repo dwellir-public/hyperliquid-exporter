@@ -23,8 +23,7 @@ type ContractInfo struct {
 
 // handles contract name resolution WITH caching
 type Resolver struct {
-	mu      sync.RWMutex
-	cache   *cache.LRUCache
+	cache *cache.LRUCache
 	client  *http.Client
 	baseURL string
 
@@ -133,7 +132,7 @@ func (r *Resolver) preloadInitialTokens(ctx context.Context) (int, error) {
 	if err != nil {
 		return count, fmt.Errorf("fetch tokens: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return count, fmt.Errorf("unexpected status: %d", resp.StatusCode)
@@ -148,123 +147,6 @@ func (r *Resolver) preloadInitialTokens(ctx context.Context) (int, error) {
 	for _, token := range tokenResp.Items {
 		r.cacheToken(&token)
 		count++
-	}
-
-	return count, nil
-}
-
-// fetch all tokens from API (not used atm, keeping for reference)
-func (r *Resolver) preloadAllTokens(ctx context.Context) (int, error) {
-	count := 0
-	nextHash := ""
-
-	for {
-		select {
-		case <-ctx.Done():
-			return count, ctx.Err()
-		default:
-		}
-
-		url := fmt.Sprintf("%s/tokens", r.baseURL)
-		if nextHash != "" {
-			url = fmt.Sprintf("%s?hash=%s&items_count=50", url, nextHash)
-		}
-
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-		if err != nil {
-			return count, fmt.Errorf("create request: %w", err)
-		}
-
-		resp, err := r.client.Do(req)
-		if err != nil {
-			return count, fmt.Errorf("fetch tokens: %w", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			return count, fmt.Errorf("unexpected status: %d", resp.StatusCode)
-		}
-
-		var tokenResp TokenListResponse
-		if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-			return count, fmt.Errorf("decode response: %w", err)
-		}
-
-		// cache all tokens
-		for _, token := range tokenResp.Items {
-			r.cacheToken(&token)
-			count++
-		}
-
-		// check if more pages
-		if tokenResp.NextPageParams == nil || tokenResp.NextPageParams.Hash == "" {
-			break
-		}
-		nextHash = tokenResp.NextPageParams.Hash
-
-		// smol delay to avoid ratelimiting
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	return count, nil
-}
-
-// fetch all contracts from API
-func (r *Resolver) preloadAllSmartContracts(ctx context.Context) (int, error) {
-	count := 0
-	nextHash := ""
-
-	for {
-		select {
-		case <-ctx.Done():
-			return count, ctx.Err()
-		default:
-		}
-
-		url := fmt.Sprintf("%s/smart-contracts", r.baseURL)
-		if nextHash != "" {
-			url = fmt.Sprintf("%s?hash=%s&items_count=50", url, nextHash)
-		}
-
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-		if err != nil {
-			return count, fmt.Errorf("create request: %w", err)
-		}
-
-		resp, err := r.client.Do(req)
-		if err != nil {
-			return count, fmt.Errorf("fetch contracts: %w", err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			return count, fmt.Errorf("unexpected status: %d", resp.StatusCode)
-		}
-
-		var contractResp SmartContractListResponse
-		if err := json.NewDecoder(resp.Body).Decode(&contractResp); err != nil {
-			return count, fmt.Errorf("decode response: %w", err)
-		}
-
-		// cache all contracts (skip if already cached as token)
-		for _, contract := range contractResp.Items {
-			addr := strings.ToLower(contract.Address.Hash)
-			_, exists := r.cache.Get(addr)
-
-			if !exists && contract.Address.Name != "" {
-				r.cacheSmartContract(contract.Address.Hash, contract.Address.Name)
-				count++
-			}
-		}
-
-		// check if more pages
-		if contractResp.NextPageParams == nil || contractResp.NextPageParams.Hash == "" {
-			break
-		}
-		nextHash = contractResp.NextPageParams.Hash
-
-		// smol delay to avoid ratelimit
-		time.Sleep(100 * time.Millisecond)
 	}
 
 	return count, nil
@@ -331,7 +213,7 @@ func (r *Resolver) fetchTokenInfo(address string) bool {
 		logger.DebugComponent("contracts", "Failed to fetch token %s: %v", address, err)
 		return false
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return false
@@ -356,7 +238,7 @@ func (r *Resolver) fetchSmartContractInfo(address string) bool {
 		logger.DebugComponent("contracts", "Failed to fetch contract %s: %v", address, err)
 		return false
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return false

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"sync"
 
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -13,7 +12,6 @@ import (
 type Reader struct {
 	bufferSize int
 	cache      *Cache
-	mu         sync.RWMutex
 }
 
 // creates a new reader with specified buffer size
@@ -42,7 +40,7 @@ func (r *Reader) ReadContext(filePath string) (*ContextInfo, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// buffered reader for efficiency
 	reader := bufio.NewReaderSize(file, r.bufferSize)
@@ -95,7 +93,7 @@ func (r *Reader) ReadContextWithAccounts(filePath string) (*ContextInfo, int64, 
 	if err != nil {
 		return nil, 0, fmt.Errorf("open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	reader := bufio.NewReaderSize(file, r.bufferSize)
 
@@ -153,7 +151,7 @@ func (r *Reader) ReadValidatorProfiles(filePath string) ([]ValidatorProfile, err
 	if err != nil {
 		return nil, fmt.Errorf("open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	reader := bufio.NewReaderSize(file, r.bufferSize)
 

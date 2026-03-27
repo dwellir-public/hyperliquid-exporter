@@ -132,7 +132,7 @@ func StartEVMMonitor(ctx context.Context, cfg config.Config, errCh chan<- error)
 						_, err = file.Seek(0, io.SeekEnd)
 						if err != nil {
 							errCh <- fmt.Errorf("error seeking to end of file: %w", err)
-							file.Close()
+							_ = file.Close()
 							continue
 						}
 						logger.InfoComponent("evm", "First run: starting to stream from the end of file %s", latestFile)

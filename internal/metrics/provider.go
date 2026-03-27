@@ -1,15 +1,12 @@
 package metrics
 
 import (
-	"fmt"
-
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 	api "go.opentelemetry.io/otel/metric"
 )
 
 var (
-	meter metric.Meter
+	meter api.Meter
 )
 
 func getAllObservables() []api.Observable {
@@ -88,16 +85,6 @@ func getAllObservables() []api.Observable {
 	}
 }
 
-func initInstruments() error {
-	if err := createInstruments(); err != nil {
-		return fmt.Errorf("failed to create instruments: %w", err)
-	}
-
-	// Callback registration is now handled in RegisterCallbacks() in callbacks.go
-	return nil
-}
-
-// TODO
 func getCommonLabels() []attribute.KeyValue {
 	return []attribute.KeyValue{}
 }

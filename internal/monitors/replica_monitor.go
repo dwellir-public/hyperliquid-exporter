@@ -3,7 +3,6 @@ package monitors
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"io"
 	"maps"
 	"os"
@@ -81,7 +80,7 @@ func (m *ReplicaMonitor) streamLoop(ctx context.Context) {
 
 	defer func() {
 		if file != nil {
-			file.Close()
+			_ = file.Close()
 		}
 	}()
 
@@ -104,7 +103,7 @@ func (m *ReplicaMonitor) streamLoop(ctx context.Context) {
 
 				// clean up old file
 				if file != nil {
-					file.Close()
+					_ = file.Close()
 				}
 
 				file, err = os.Open(latestFile)
@@ -119,7 +118,7 @@ func (m *ReplicaMonitor) streamLoop(ctx context.Context) {
 					_, err = file.Seek(0, io.SeekEnd)
 					if err != nil {
 						logger.ErrorComponent("replica", "Error seeking to end of file: %v", err)
-						file.Close()
+						_ = file.Close()
 						file = nil
 						time.Sleep(1 * time.Second)
 						continue
@@ -208,18 +207,6 @@ func (m *ReplicaMonitor) streamLoop(ctx context.Context) {
 			}
 		}
 	}
-}
-
-// processes a single replica block
-func (m *ReplicaMonitor) processReplicaBlock(block *replica.ReplicaBlock) error {
-	// extract metrics from the block
-	metrics, err := m.parser.ExtractMetrics(block)
-	if err != nil {
-		return fmt.Errorf("extract metrics: %w", err)
-	}
-
-	m.processBlock(metrics)
-	return nil
 }
 
 // processes metrics from a single block

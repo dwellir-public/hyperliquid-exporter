@@ -800,16 +800,18 @@ func IncrementHeartbeatAcksReceived(fromValidator, toValidator string) {
 	var fromValidatorAddr, toValidatorAddr string
 	var fromName, toName string
 	for _, label := range fromLabels {
-		if label.Key == "validator" {
+		switch label.Key {
+		case "validator":
 			fromValidatorAddr = label.Value.AsString()
-		} else if label.Key == "name" {
+		case "name":
 			fromName = label.Value.AsString()
 		}
 	}
 	for _, label := range toLabels {
-		if label.Key == "validator" {
+		switch label.Key {
+		case "validator":
 			toValidatorAddr = label.Value.AsString()
-		} else if label.Key == "name" {
+		case "name":
 			toName = label.Value.AsString()
 		}
 	}
@@ -823,11 +825,7 @@ func IncrementHeartbeatAcksReceived(fromValidator, toValidator string) {
 	))
 }
 
-func RecordHeartbeatAckDelay(fromValidator, toValidator string, delayMs float64) {
-	// expand truncated addresses if needed (even though not used in labels)
-	fromValidator = ExpandAddress(fromValidator)
-	toValidator = ExpandAddress(toValidator)
-
+func RecordHeartbeatAckDelay(_, _ string, delayMs float64) {
 	ctx := context.Background()
 	if HLConsensusHeartbeatDelayHist != nil {
 		// record without labels to reduce cardinality
@@ -845,16 +843,18 @@ func SetValidatorConnectivity(validator, peer string, connected float64) {
 	var validatorAddr, peerAddr string
 	var validatorName, peerName string
 	for _, label := range validatorLabels {
-		if label.Key == "validator" {
+		switch label.Key {
+		case "validator":
 			validatorAddr = label.Value.AsString()
-		} else if label.Key == "name" {
+		case "name":
 			validatorName = label.Value.AsString()
 		}
 	}
 	for _, label := range peerLabels {
-		if label.Key == "validator" {
+		switch label.Key {
+		case "validator":
 			peerAddr = label.Value.AsString()
-		} else if label.Key == "name" {
+		case "name":
 			peerName = label.Value.AsString()
 		}
 	}

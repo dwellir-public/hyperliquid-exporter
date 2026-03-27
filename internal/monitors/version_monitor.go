@@ -47,28 +47,28 @@ func updateVersionInfo(ctx context.Context, cfg config.Config) error {
 		return fmt.Errorf("error creating temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
-	tmpFile.Close() // close immediately, we'll open it for writing
+	_ = tmpFile.Close()
 
 	// ensure cleanup
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	// copy the binary to the temp file
 	source, err := os.Open(cfg.NodeBinary)
 	if err != nil {
 		return fmt.Errorf("error opening source binary: %w", err)
 	}
-	defer source.Close()
+	defer func() { _ = source.Close() }()
 
 	dest, err := os.OpenFile(tmpPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
 	if err != nil {
 		return fmt.Errorf("error opening temp file: %w", err)
 	}
-	defer dest.Close()
+	defer func() { _ = dest.Close() }()
 
 	if _, err := io.Copy(dest, source); err != nil {
 		return fmt.Errorf("error copying binary: %w", err)
 	}
-	dest.Close() // Close before executing
+	_ = dest.Close()
 
 	// make the temp file executable
 	if err := os.Chmod(tmpPath, 0755); err != nil {

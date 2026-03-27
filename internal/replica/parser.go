@@ -42,7 +42,7 @@ func (p *Parser) ParseFile(filePath string) ([]*BlockMetrics, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	reader := bufio.NewReaderSize(file, p.bufferSize)
 	return p.parseBlocks(reader)
@@ -245,43 +245,13 @@ func countJSONArrayElements(data json.RawMessage) int {
 	return count
 }
 
-// counts the number of operations within an action
-func (p *Parser) countOperations(actionType string, actionData map[string]any) int {
-	switch actionType {
-	case ActionTypeOrder, ActionTypeTwapOrder:
-		// count individual orders
-		if orders, ok := actionData["orders"].([]any); ok {
-			return len(orders)
-		}
-		return 1
-
-	case ActionTypeCancel, ActionTypeCancelByCloid:
-		// count individual cancellations
-		if cancels, ok := actionData["cancels"].([]any); ok {
-			return len(cancels)
-		}
-		return 1
-
-	case ActionTypeBatchModify:
-		// count individual modifications
-		if modifies, ok := actionData["modifies"].([]any); ok {
-			return len(modifies)
-		}
-		return 1
-
-	default:
-		// for all other action types, count as 1 operation
-		return 1
-	}
-}
-
 // streams a replica_cmds file and calls the callback for each block
 func (p *Parser) StreamFile(filePath string, callback func(*BlockMetrics) error) error {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	reader := bufio.NewReaderSize(file, p.bufferSize)
 	decoder := json.NewDecoder(reader)

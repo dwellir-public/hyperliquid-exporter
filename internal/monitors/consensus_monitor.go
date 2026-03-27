@@ -169,7 +169,7 @@ func (m *ConsensusMonitor) monitorConsensusLogs(ctx context.Context, errCh chan<
 		select {
 		case <-ctx.Done():
 			if file != nil {
-				file.Close()
+				_ = file.Close()
 			}
 			return
 		default:
@@ -193,7 +193,7 @@ func (m *ConsensusMonitor) monitorConsensusLogs(ctx context.Context, errCh chan<
 			// switch to new file if needed
 			if latestFile != currentFile {
 				if file != nil {
-					file.Close()
+					_ = file.Close()
 					file = nil
 					fileReader = nil
 				}
@@ -210,7 +210,7 @@ func (m *ConsensusMonitor) monitorConsensusLogs(ctx context.Context, errCh chan<
 					_, err = file.Seek(0, io.SeekEnd)
 					if err != nil {
 						errCh <- fmt.Errorf("error seeking to end of file: %w", err)
-						file.Close()
+						_ = file.Close()
 						file = nil
 						time.Sleep(1 * time.Second)
 						continue
@@ -724,7 +724,7 @@ func (m *ConsensusMonitor) monitorStatusLogs(ctx context.Context, errCh chan<- e
 					_, err = file.Seek(0, io.SeekEnd)
 					if err != nil {
 						errCh <- fmt.Errorf("error seeking to end of file: %w", err)
-						file.Close()
+						_ = file.Close()
 						time.Sleep(1 * time.Second)
 						continue
 					}

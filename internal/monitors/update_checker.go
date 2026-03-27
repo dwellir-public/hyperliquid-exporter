@@ -19,7 +19,6 @@ const (
 )
 
 var (
-	lastDownloadTime time.Time
 	cachedLatestHash string
 	cacheExpiry      time.Time
 )
@@ -71,10 +70,10 @@ func checkSoftwareUpdate(ctx context.Context, cfg config.Config) error {
 		return fmt.Errorf("error creating temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	// ensure cleanup
-	defer os.Remove(tmpPath)
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	// download binary to temp file
 	downloadCmd := exec.CommandContext(ctx, "curl", "-sSL", "-o", tmpPath, binaryURL)

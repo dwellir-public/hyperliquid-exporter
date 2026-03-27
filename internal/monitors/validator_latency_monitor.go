@@ -132,7 +132,7 @@ func (m *ValidatorLatencyMonitor) processValidatorLatencyFile(validator, filePat
 		}
 		return fmt.Errorf("failed to open file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// get last processed position
 	lastPos, exists := m.lastProcessed[validator]
@@ -210,7 +210,7 @@ func (m *ValidatorLatencyMonitor) processEMAFile() error {
 		}
 		return fmt.Errorf("failed to open EMA file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// read the last line (most recent data)
 	var lastLine string

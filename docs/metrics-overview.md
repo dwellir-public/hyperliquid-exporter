@@ -1,3 +1,9 @@
+---
+last_edited: 2026-03-27
+version: 2.0.0
+commit: 5bfc9e9
+---
+
 # Hyperliquid Exporter Metrics Reference
 
 ## HyperCore Metrics
@@ -5,7 +11,7 @@
 | Metric | Type | Labels | Description | Requirements |
 |--------|------|--------|-------------|--------------|
 | `hl_core_block_height` | Gauge | - | Current block height | - |
-| `hl_core_blocks_processed_total` | Counter | - | Total blocks processed | `--replica-metrics` |
+| `hl_core_blocks_processed` | Counter | - | Total blocks processed | `--replica-metrics` |
 | `hl_core_block_time_milliseconds` | Histogram | `state_type` | Time between blocks in milliseconds | - |
 | `hl_core_latest_block_time` | Gauge | - | Unix timestamp of latest block | - |
 | `hl_core_last_processed_round` | Gauge | - | Last processed consensus round | `--replica-metrics` |
@@ -13,9 +19,10 @@
 | `hl_core_operations_per_block` | Histogram | - | Distribution of operations per block | `--replica-metrics` |
 | `hl_core_operations_total` | Counter | `type`, `category` | Total individual operations by type and category | `--replica-metrics` |
 | `hl_core_orders_total` | Counter | - | Total orders placed | `--replica-metrics` |
-| `hl_core_rounds_processed_total` | Counter | - | Total consensus rounds processed | `--replica-metrics` |
+| `hl_core_rounds_processed` | Counter | - | Total consensus rounds processed | `--replica-metrics` |
 | `hl_core_tx_per_block` | Histogram | - | Distribution of transactions per block | `--replica-metrics` |
 | `hl_core_tx_total` | Counter | `type` | Total transactions/actions by type | `--replica-metrics` |
+| `hl_timeout_rounds_total` | Counter | `suspect` | Total number of timeout rounds | `--replica-metrics` |
 
 Metrics marked with `--replica-metrics` also require hl-node to be running with `--replica-cmds-style actions-and-responses`.
 
@@ -57,6 +64,16 @@ Metrics marked with `--replica-metrics` also require hl-node to be running with 
 | `hl_metal_last_processed_time` | Gauge | - | Unix timestamp of last processing by replica monitor | `--replica-metrics` |
 | `hl_metal_parse_duration` | Gauge | - | Duration of replica transaction parsing in seconds | `--replica-metrics` |
 
+## Runtime Metrics
+
+| Metric | Type | Labels | Description | Requirements |
+|--------|------|--------|-------------|--------------|
+| `hl_go_heap_objects` | Gauge | - | Number of allocated heap objects | - |
+| `hl_go_heap_inuse_mb` | Gauge | - | Heap memory in use in MB | - |
+| `hl_go_heap_idle_mb` | Gauge | - | Heap memory idle in MB | - |
+| `hl_go_sys_mb` | Gauge | - | Total memory obtained from OS in MB | - |
+| `hl_go_num_goroutines` | Gauge | - | Number of goroutines | - |
+
 ## P2P Network Metrics
 
 | Metric | Type | Labels | Description | Requirements |
@@ -74,7 +91,7 @@ P2P metrics track non-validator peer connections only
 | `hl_software_version` | Gauge | `date`, `commit` | Software version info (always 1, version in labels) | - |
 
 
-### Consensus metrics
+## Consensus Metrics
 
 ### Basic Validator Metrics
 
@@ -94,26 +111,37 @@ P2P metrics track non-validator peer connections only
 
 The above are available to all node types, while the below metrics require access to consensus (running a validator)
 
+### Validator Node Metrics
+
 | Metric | Type | Labels | Description | Requirements |
 |--------|------|--------|-------------|--------------|
 | `hl_consensus_current_round` | Gauge | - | Current consensus round from block messages | Validator node |
-| `hl_consensus_heartbeat_ack_delay_ms` | Histogram | - | heartbeat acknowledgement delays | Validator node |
+| `hl_consensus_heartbeat_ack_delay_ms` | Histogram | - | Heartbeat acknowledgement delays | Validator node |
 | `hl_consensus_heartbeat_ack_received_total` | Counter | `from_validator`, `to_validator`, `from_name`, `to_name` | Heartbeat acknowledgments between validator pairs | Validator node |
 | `hl_consensus_heartbeat_sent_total` | Counter | `validator`, `signer`, `name` | Total heartbeats sent by validators | Validator node |
 | `hl_consensus_heartbeat_status` | Gauge | `validator`, `signer`, `name`, `status_type` | Heartbeat health metrics (status_type: since_last_success, last_ack_duration) | Validator node |
-| `hl_consensus_validator_connectivity` | Gauge | `validator`, `peer`, `validator_name`, `peer_name` | Real-time connectivity status (0=disconnected, 1=connected) | Validator node |
-| `hl_consensus_vote_round` | Gauge | `validator`, `signer`, `name` | Last voting round for each validator | Validator node |
-| `hl_consensus_vote_time_diff_seconds` | Gauge | `validator`, `signer`, `name` | Seconds since validator's last vote | Validator node |
 | `hl_consensus_qc_participation_rate` | Gauge | `validator`, `signer`, `name` | Percentage of recent blocks where validator signed QC (100 blocks sliding) | Validator node |
+| `hl_consensus_qc_round_lag` | Gauge | - | Average difference between block round and QC round | Validator node |
 | `hl_consensus_qc_signatures_total` | Counter | `validator`, `signer`, `name` | Cumulative QC signatures by each validator | Validator node |
 | `hl_consensus_qc_size` | Histogram | - | Distribution of QC signer counts per block | Validator node |
 | `hl_consensus_rounds_per_block` | Gauge | - | Average rounds needed to produce a block | Validator node |
 | `hl_consensus_tc_blocks_total` | Counter | `proposer`, `signer`, `name` | Total blocks proposed containing timeout certificates | Validator node |
 | `hl_consensus_tc_participation_total` | Counter | `validator`, `signer`, `name` | Total timeout votes sent by each validator | Validator node |
 | `hl_consensus_tc_size` | Histogram | - | Distribution of timeout vote counts in TC blocks | Validator node |
-| `hl_consensus_validator_latency_seconds` | Gauge | `validator`, `signer`, `name` | Current network latency to validator in seconds | Validator node with latency monitoring |
-| `hl_consensus_validator_latency_round` | Gauge | `validator`, `signer`, `name` | Consensus round when latency was last measured | Validator node with latency monitoring |
+| `hl_consensus_validator_connectivity` | Gauge | `validator`, `peer`, `validator_name`, `peer_name` | Real-time connectivity status (0=disconnected, 1=connected) | Validator node |
 | `hl_consensus_validator_latency_ema_seconds` | Gauge | `validator`, `signer`, `name` | Exponential moving average of validator latency | Validator node with latency monitoring |
+| `hl_consensus_validator_latency_round` | Gauge | `validator`, `signer`, `name` | Consensus round when latency was last measured | Validator node with latency monitoring |
+| `hl_consensus_validator_latency_seconds` | Gauge | `validator`, `signer`, `name` | Current network latency to validator in seconds | Validator node with latency monitoring |
+| `hl_consensus_vote_round` | Gauge | `validator`, `signer`, `name` | Last voting round for each validator | Validator node |
+| `hl_consensus_vote_time_diff_seconds` | Gauge | `validator`, `signer`, `name` | Seconds since validator's last vote | Validator node |
+
+### Consensus Monitor Health Metrics
+
+| Metric | Type | Labels | Description | Requirements |
+|--------|------|--------|-------------|--------------|
+| `hl_consensus_monitor_last_processed` | Gauge | `monitor_type` | Unix timestamp of last processed line by monitor type | Validator node |
+| `hl_consensus_monitor_lines_processed_total` | Counter | `monitor_type` | Total lines processed by consensus monitor | Validator node |
+| `hl_consensus_monitor_errors_total` | Counter | `monitor_type` | Total errors encountered by consensus monitor | Validator node |
 
 ## Label Definitions
 

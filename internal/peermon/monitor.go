@@ -11,9 +11,10 @@ import (
 )
 
 const (
-	probeInterval  = 1 * time.Minute
-	registerBufLen = 256
-	maxConcurrent  = 10
+	probeInterval     = 1 * time.Minute
+	initialProbeDelay = 2 * time.Second
+	registerBufLen    = 256
+	maxConcurrent     = 10
 )
 
 var peerProbeTimeout = 5 * time.Second
@@ -64,6 +65,8 @@ func (m *Monitor) Start(ctx context.Context, errCh chan<- error) {
 	ticker := time.NewTicker(probeInterval)
 	defer ticker.Stop()
 
+	initialProbe := time.After(initialProbeDelay)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -76,6 +79,14 @@ func (m *Monitor) Start(ctx context.Context, errCh chan<- error) {
 
 		case ip := <-m.register:
 			m.processRegistration(ip)
+
+		case <-initialProbe:
+			initialProbe = nil
+			m.drainRegistrations()
+			m.saveIfDirty()
+			if _, skipped := m.startProbeCycle(ctx); skipped {
+				logger.WarningComponent("peer-latency", "Previous probe cycle still running, skipping initial probe")
+			}
 
 		case <-ticker.C:
 			m.drainRegistrations()

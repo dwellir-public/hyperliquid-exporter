@@ -1279,7 +1279,7 @@ func IncrementVerifications(peerIP string) {
 
 // Peer latency setters
 
-func SetPeerLatency(peerIP string, latencyUs float64) {
+func SetPeerLatency(peerIP string, latencyMs float64) {
 	metricsMutex.Lock()
 	defer metricsMutex.Unlock()
 
@@ -1288,7 +1288,7 @@ func SetPeerLatency(peerIP string, latencyUs float64) {
 	}
 
 	labeledValues[HLPeerLatencyGauge][peerIP] = labeledValue{
-		value:  latencyUs,
+		value:  latencyMs,
 		labels: []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
 	}
 }

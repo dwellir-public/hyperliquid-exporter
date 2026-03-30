@@ -8,7 +8,7 @@ Initial release post-fork.
 
 ### Added
 - Peer latency monitoring (`--peer-latency`): TCP-based latency probes against all known peers once per minute
-- New metrics: `hl_peer_latency_us`, `hl_peer_reachable`, `hl_peer_probes_total`, `hl_peer_probe_failures_total`, `hl_peer_monitored_count`
+- New metrics: `hl_peer_latency_ms`, `hl_peer_reachable`, `hl_peer_probes_total`, `hl_peer_probe_failures_total`, `hl_peer_monitored_count`
 - Persistent peer set (`.hyperliquid-exporter/peers.json`) survives restarts with LRU eviction at 100 peers
 - New `internal/peermon` package for peer latency monitoring
 - Per-peer P2P metrics: `hl_p2p_incoming_requests_total`, `hl_p2p_incoming_peer_last_seen`, `hl_p2p_incoming_peers_active`, `hl_p2p_child_peer_connected`, `hl_p2p_child_peer_connections`

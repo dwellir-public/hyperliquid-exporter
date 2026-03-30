@@ -167,8 +167,8 @@ func (m *Monitor) probeAll(ctx context.Context, peers []Peer) {
 			result := Probe(probeCtx, peer.IP, peer.Port)
 
 			if result.Reachable {
-				latencyUs := float64(result.Latency.Microseconds())
-				metrics.SetPeerLatency(peer.IP, latencyUs)
+				latencyMs := float64(result.Latency.Milliseconds())
+				metrics.SetPeerLatency(peer.IP, latencyMs)
 				metrics.SetPeerReachable(peer.IP, true)
 				m.peers.UpdatePort(peer.IP, result.Port)
 			} else {

@@ -96,7 +96,7 @@ Requires `--peer-latency` flag. Probes all known peers via TCP connect (ports 40
 
 | Metric | Type | Labels | Description | Requirements |
 |--------|------|--------|-------------|--------------|
-| `hl_peer_latency_us` | Gauge | `peer_ip` | TCP connect latency to peer in microseconds | `--peer-latency` |
+| `hl_peer_latency_ms` | Gauge | `peer_ip` | TCP connect latency to peer in milliseconds | `--peer-latency` |
 | `hl_peer_reachable` | Gauge | `peer_ip` | Whether peer is reachable via TCP (1=yes, 0=no) | `--peer-latency` |
 | `hl_peer_probes_total` | Counter | `peer_ip` | Total probe attempts per peer IP | `--peer-latency` |
 | `hl_peer_probe_failures_total` | Counter | `peer_ip` | Total failed probes per peer IP | `--peer-latency` |

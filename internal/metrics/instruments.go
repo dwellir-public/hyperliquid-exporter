@@ -902,8 +902,8 @@ func createInstruments() error {
 
 	// Peer latency metrics
 	HLPeerLatencyGauge, err = meter.Float64ObservableGauge(
-		"hl_peer_latency_us",
-		api.WithDescription("TCP connect latency to peer in microseconds"),
+		"hl_peer_latency_ms",
+		api.WithDescription("TCP connect latency to peer in milliseconds"),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create peer latency gauge: %w", err)

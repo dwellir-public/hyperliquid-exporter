@@ -28,6 +28,7 @@ type GossipMonitor struct {
 	lastOffset      int64
 	peerLastSeen    map[string]time.Time // tier 1: track active incoming peers
 	knownChildPeers map[string]childPeerState
+	registerPeer    func(string)
 }
 
 type PeerInfo struct {
@@ -44,17 +45,18 @@ type childPeerState struct {
 	verified bool
 }
 
-func NewGossipMonitor(cfg *config.Config) *GossipMonitor {
+func NewGossipMonitor(cfg *config.Config, registerPeer func(string)) *GossipMonitor {
 	return &GossipMonitor{
 		config:          cfg,
 		gossipDir:       filepath.Join(cfg.NodeHome, "data", "node_logs", "gossip_rpc", "hourly"),
 		peerLastSeen:    make(map[string]time.Time),
 		knownChildPeers: make(map[string]childPeerState),
+		registerPeer:    registerPeer,
 	}
 }
 
-func StartGossipMonitor(ctx context.Context, cfg *config.Config, errCh chan<- error) {
-	m := NewGossipMonitor(cfg)
+func StartGossipMonitor(ctx context.Context, cfg *config.Config, errCh chan<- error, registerPeer func(string)) {
+	m := NewGossipMonitor(cfg, registerPeer)
 
 	if _, err := os.Stat(m.gossipDir); os.IsNotExist(err) {
 		logger.InfoComponent("gossip", "Gossip RPC directory not found, monitoring disabled: %s", m.gossipDir)
@@ -224,6 +226,9 @@ func (m *GossipMonitor) processChildPeers(raw json.RawMessage, currentPeers map[
 		// tier 2: per-peer detail
 		metrics.SetChildPeerConnected(info.IP, status.Verified, true)
 		metrics.SetChildPeerConnections(info.IP, status.ConnectionCount)
+		if m.registerPeer != nil {
+			m.registerPeer(info.IP)
+		}
 		currentPeers[info.IP] = status
 	}
 
@@ -248,6 +253,9 @@ func (m *GossipMonitor) processIncomingRequest(eventData []json.RawMessage, entr
 
 	metrics.IncrementIncomingRequests(peerIP)
 	metrics.SetIncomingPeerLastSeen(peerIP, float64(entryTime.Unix()))
+	if m.registerPeer != nil {
+		m.registerPeer(peerIP)
+	}
 	m.peerLastSeen[peerIP] = entryTime
 }
 

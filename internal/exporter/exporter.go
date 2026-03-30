@@ -2,13 +2,17 @@ package exporter
 
 import (
 	"context"
+	"path/filepath"
 	"time"
 
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/monitors"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/peermon"
 )
+
+const persistentFilesDir = ".hyperliquid-exporter"
 
 func Start(ctx context.Context, cfg config.Config) {
 	logger.InfoComponent("system", "Starting Hyperliquid exporter...")
@@ -34,6 +38,7 @@ func Start(ctx context.Context, cfg config.Config) {
 	latencyErrCh := make(chan error, 1)
 	gossipErrCh := make(chan error, 1)
 	gossipConnErrCh := make(chan error, 1)
+	peerLatencyErrCh := make(chan error, 1)
 
 	logger.InfoComponent("core", "Initializing block monitor...")
 	go monitors.StartBlockMonitor(monitorCtx, cfg, blockErrCh)
@@ -82,12 +87,25 @@ func Start(ctx context.Context, cfg config.Config) {
 	logger.InfoComponent("latency", "Initializing validator latency monitor...")
 	go monitors.StartValidatorLatencyMonitor(monitorCtx, &cfg, latencyErrCh)
 
+	// start peer latency monitor if enabled (before gossip monitors so it can receive registrations)
+	var registerPeer func(string)
+	var peerMon *peermon.Monitor
+	if cfg.EnablePeerLatency {
+		logger.InfoComponent("peer-latency", "Initializing peer latency monitor...")
+		peerDataDir := filepath.Join(filepath.Dir(cfg.NodeHome), persistentFilesDir)
+		peerMon = peermon.New(peerDataDir)
+		registerPeer = peerMon.Register
+		go peerMon.Start(monitorCtx, peerLatencyErrCh)
+	} else {
+		logger.InfoComponent("peer-latency", "Peer latency monitor disabled")
+	}
+
 	// start gossip monitors (only run if respective log dirs exist)
 	logger.InfoComponent("gossip", "Initializing gossip monitor...")
-	go monitors.StartGossipMonitor(monitorCtx, &cfg, gossipErrCh)
+	go monitors.StartGossipMonitor(monitorCtx, &cfg, gossipErrCh, registerPeer)
 
 	logger.InfoComponent("gossip", "Initializing gossip connections monitor...")
-	go monitors.StartGossipConnectionsMonitor(monitorCtx, &cfg, gossipConnErrCh)
+	go monitors.StartGossipConnectionsMonitor(monitorCtx, &cfg, gossipConnErrCh, registerPeer)
 
 	if cfg.EnableReplicaMetrics {
 		logger.InfoComponent("replica", "Initializing replica commands monitor (streaming)...")
@@ -143,6 +161,8 @@ func Start(ctx context.Context, cfg config.Config) {
 			logger.ErrorComponent("gossip", "Gossip monitor error: %v", err)
 		case err := <-gossipConnErrCh:
 			logger.ErrorComponent("gossip", "Gossip connections monitor error: %v", err)
+		case err := <-peerLatencyErrCh:
+			logger.ErrorComponent("peer-latency", "Peer latency monitor error: %v", err)
 		case <-ctx.Done():
 			logger.InfoComponent("system", "Shutting down monitors...")
 			return

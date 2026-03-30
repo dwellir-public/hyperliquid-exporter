@@ -90,6 +90,18 @@ Metrics marked with `--replica-metrics` also require hl-node to be running with 
 
 The `incoming_*` metrics are particularly useful for downstream (non-validator) nodes where `child_peers status` is always empty — the upstream peer only appears in `incoming request` events. The `stream_connections` and `verifications` metrics come from a separate log directory (`gossip_connections/`) and track the TCP connection lifecycle.
 
+## Peer Latency Metrics
+
+Requires `--peer-latency` flag. Probes all known peers via TCP connect (ports 4000-4010) once per minute. Peers are discovered from gossip logs and persisted to disk across restarts.
+
+| Metric | Type | Labels | Description | Requirements |
+|--------|------|--------|-------------|--------------|
+| `hl_peer_latency_us` | Gauge | `peer_ip` | TCP connect latency to peer in microseconds | `--peer-latency` |
+| `hl_peer_reachable` | Gauge | `peer_ip` | Whether peer is reachable via TCP (1=yes, 0=no) | `--peer-latency` |
+| `hl_peer_probes_total` | Counter | `peer_ip` | Total probe attempts per peer IP | `--peer-latency` |
+| `hl_peer_probe_failures_total` | Counter | `peer_ip` | Total failed probes per peer IP | `--peer-latency` |
+| `hl_peer_monitored_count` | Gauge | - | Number of peers in the monitored set | `--peer-latency` |
+
 ## Software Version Metrics
 
 | Metric | Type | Labels | Description | Requirements |

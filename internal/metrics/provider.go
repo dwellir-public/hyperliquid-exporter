@@ -56,6 +56,7 @@ func getAllObservables() []api.Observable {
 
 		// P2P per-peer metrics
 		HLP2PIncomingPeerLastSeenGauge,
+		HLP2PIncomingPeersActiveGauge,
 		HLP2PChildPeerConnectedGauge,
 		HLP2PChildPeerConnectionsGauge,
 

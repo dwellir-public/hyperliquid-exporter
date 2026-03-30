@@ -1,11 +1,9 @@
 package monitors
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -95,59 +93,41 @@ func (m *GossipConnectionsMonitor) processFile(filePath string, offset int64) (i
 		return offset, fmt.Errorf("empty file path")
 	}
 
-	file, err := os.Open(filePath)
-	if err != nil {
-		return offset, fmt.Errorf("failed to open gossip connections file: %w", err)
-	}
-	defer func() { _ = file.Close() }()
-
-	if offset > 0 {
-		if _, err := file.Seek(offset, io.SeekStart); err != nil {
-			return offset, fmt.Errorf("failed to seek: %w", err)
-		}
-	}
-
-	bytesRead := int64(0)
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		bytesRead += int64(len(line)) + 1
-
+	newOffset, err := readCommittedLines(filePath, offset, func(line []byte) {
 		var entry []json.RawMessage
 		if err := json.Unmarshal(line, &entry); err != nil {
-			continue
+			return
 		}
 
 		if len(entry) != 2 {
-			continue
+			return
 		}
 
 		var eventData []json.RawMessage
 		if err := json.Unmarshal(entry[1], &eventData); err != nil {
-			continue
+			return
 		}
 
 		if len(eventData) < 2 {
-			continue
+			return
 		}
 
 		var eventType string
 		if err := json.Unmarshal(eventData[0], &eventType); err != nil {
-			continue
+			return
 		}
 
 		switch eventType {
 		case "handle_stream_connection":
 			if len(eventData) < 3 {
-				continue
+				return
 			}
 			var ipPort, connType string
 			if err := json.Unmarshal(eventData[1], &ipPort); err != nil {
-				continue
+				return
 			}
 			if err := json.Unmarshal(eventData[2], &connType); err != nil {
-				continue
+				return
 			}
 			peerIP, _, err := net.SplitHostPort(ipPort)
 			if err != nil {
@@ -160,15 +140,14 @@ func (m *GossipConnectionsMonitor) processFile(filePath string, offset int64) (i
 				IP string `json:"Ip"`
 			}
 			if err := json.Unmarshal(eventData[1], &peer); err != nil {
-				continue
+				return
 			}
 			metrics.IncrementVerifications(peer.IP)
 		}
+	})
+	if err != nil {
+		return offset, fmt.Errorf("failed to tail gossip connections file: %w", err)
 	}
 
-	if err := scanner.Err(); err != nil {
-		return offset, fmt.Errorf("scanner error: %w", err)
-	}
-
-	return offset + bytesRead, nil
+	return newOffset, nil
 }

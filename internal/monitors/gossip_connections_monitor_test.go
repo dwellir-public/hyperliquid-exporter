@@ -117,3 +117,45 @@ func TestProcessConnectionsFile_MalformedLines(t *testing.T) {
 	require.NoError(t, err)
 	assert.Greater(t, newOffset, int64(0))
 }
+
+func TestProcessConnectionsFile_PartialLineRetry(t *testing.T) {
+	m := newTestGossipConnectionsMonitor(t)
+	dir := filepath.Join(m.dir, "20260330")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+
+	f := filepath.Join(dir, "0")
+	partial := `["2026-03-30T05:00:09.841",["verified gossip rpc",{"Ip":"192.168.108.236"}]]`
+	require.NoError(t, os.WriteFile(f, []byte(partial), 0o644))
+
+	offset1, err := m.processFile(f, 0)
+	require.NoError(t, err)
+	assert.Zero(t, offset1)
+
+	fh, err := os.OpenFile(f, os.O_APPEND|os.O_WRONLY, 0o644)
+	require.NoError(t, err)
+	_, err = fh.WriteString("\n")
+	require.NoError(t, err)
+	require.NoError(t, fh.Close())
+
+	offset2, err := m.processFile(f, offset1)
+	require.NoError(t, err)
+	assert.Greater(t, offset2, offset1)
+}
+
+func TestProcessConnectionsFile_TruncationResetsOffset(t *testing.T) {
+	m := newTestGossipConnectionsMonitor(t)
+
+	f := writeGossipFile(t, filepath.Join(m.dir, "20260330"),
+		`["2026-03-30T05:00:03.399",["handle_stream_connection","192.168.108.167:50850","gossip"]]`,
+	)
+
+	offset1, err := m.processFile(f, 0)
+	require.NoError(t, err)
+	assert.Greater(t, offset1, int64(0))
+
+	require.NoError(t, os.WriteFile(f, []byte(`["2026-03-30T05:01:03.415",["verified gossip rpc",{"Ip":"10.0.0.5"}]]`+"\n"), 0o644))
+
+	offset2, err := m.processFile(f, offset1)
+	require.NoError(t, err)
+	assert.Greater(t, offset2, int64(0))
+}

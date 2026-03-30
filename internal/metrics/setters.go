@@ -1184,6 +1184,15 @@ func SetIncomingPeerLastSeen(peerIP string, ts float64) {
 	}
 }
 
+func RemoveIncomingPeerLastSeen(peerIP string) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+
+	if _, exists := labeledValues[HLP2PIncomingPeerLastSeenGauge]; exists {
+		delete(labeledValues[HLP2PIncomingPeerLastSeenGauge], peerIP)
+	}
+}
+
 func SetIncomingPeersActive(count int64) {
 	metricsMutex.Lock()
 	defer metricsMutex.Unlock()
@@ -1219,6 +1228,20 @@ func SetChildPeerConnected(peerIP string, verified bool, connected bool) {
 	}
 }
 
+func RemoveChildPeerConnected(peerIP string, verified bool) {
+	verifiedStr := "false"
+	if verified {
+		verifiedStr = "true"
+	}
+
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+
+	if _, exists := labeledValues[HLP2PChildPeerConnectedGauge]; exists {
+		delete(labeledValues[HLP2PChildPeerConnectedGauge], peerIP+":"+verifiedStr)
+	}
+}
+
 func SetChildPeerConnections(peerIP string, count int) {
 	metricsMutex.Lock()
 	defer metricsMutex.Unlock()
@@ -1230,6 +1253,15 @@ func SetChildPeerConnections(peerIP string, count int) {
 	labeledValues[HLP2PChildPeerConnectionsGauge][peerIP] = labeledValue{
 		value:  float64(count),
 		labels: []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
+	}
+}
+
+func RemoveChildPeerConnections(peerIP string) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+
+	if _, exists := labeledValues[HLP2PChildPeerConnectionsGauge]; exists {
+		delete(labeledValues[HLP2PChildPeerConnectionsGauge], peerIP)
 	}
 }
 

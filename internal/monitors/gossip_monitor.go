@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"time"
@@ -16,12 +18,18 @@ import (
 )
 
 const (
-	gossipPollInterval = 30 * time.Second
+	gossipPollInterval    = 30 * time.Second
+	incomingPeerActiveTTL = 5 * time.Minute
+	childPeerStaleTTL     = 10 * time.Minute
 )
 
 type GossipMonitor struct {
-	config    *config.Config
-	gossipDir string
+	config          *config.Config
+	gossipDir       string
+	lastFile        string
+	lastOffset      int64
+	peerLastSeen    map[string]time.Time // tier 1: track active incoming peers
+	knownChildPeers map[string]time.Time // tier 2: track stale child peers
 }
 
 type PeerInfo struct {
@@ -35,15 +43,16 @@ type PeerStatus struct {
 
 func NewGossipMonitor(cfg *config.Config) *GossipMonitor {
 	return &GossipMonitor{
-		config:    cfg,
-		gossipDir: filepath.Join(cfg.NodeHome, "data", "node_logs", "gossip_rpc", "hourly"),
+		config:          cfg,
+		gossipDir:       filepath.Join(cfg.NodeHome, "data", "node_logs", "gossip_rpc", "hourly"),
+		peerLastSeen:    make(map[string]time.Time),
+		knownChildPeers: make(map[string]time.Time),
 	}
 }
 
 func StartGossipMonitor(ctx context.Context, cfg *config.Config, errCh chan<- error) {
 	m := NewGossipMonitor(cfg)
 
-	// Check if gossip directory exists
 	if _, err := os.Stat(m.gossipDir); os.IsNotExist(err) {
 		logger.InfoComponent("gossip", "Gossip RPC directory not found, monitoring disabled: %s", m.gossipDir)
 		return
@@ -57,16 +66,15 @@ func (m *GossipMonitor) monitorGossipLogs(ctx context.Context, errCh chan<- erro
 	ticker := time.NewTicker(gossipPollInterval)
 	defer ticker.Stop()
 
-	var lastProcessedFile string
-
 	// process immediately on startup
-	filePath, err := m.getLatestGossipLogFile()
-	if err == nil && filePath != "" {
+	if filePath, err := m.getLatestGossipLogFile(); err == nil && filePath != "" {
 		logger.InfoComponent("gossip", "First run: processing gossip file %s", filePath)
-		if err := m.processGossipFile(filePath); err != nil {
+		m.lastFile = filePath
+		if newOffset, err := m.processGossipFile(filePath, 0); err != nil {
 			logger.ErrorComponent("gossip", "Initial processing error: %v", err)
+		} else {
+			m.lastOffset = newOffset
 		}
-		lastProcessedFile = filePath
 	}
 
 	for {
@@ -81,54 +89,63 @@ func (m *GossipMonitor) monitorGossipLogs(ctx context.Context, errCh chan<- erro
 				continue
 			}
 
-			if filePath != lastProcessedFile && filePath != "" {
+			if filePath != m.lastFile && filePath != "" {
 				logger.InfoComponent("gossip", "Switching to new gossip file: %s", filePath)
-				lastProcessedFile = filePath
+				m.lastFile = filePath
+				m.lastOffset = 0
 			}
 
-			if err := m.processGossipFile(filePath); err != nil {
+			newOffset, err := m.processGossipFile(filePath, m.lastOffset)
+			if err != nil {
 				logger.ErrorComponent("gossip", "Error processing gossip file: %v", err)
 				select {
 				case errCh <- fmt.Errorf("gossip monitor: %w", err):
 				case <-ctx.Done():
 					return
 				}
+			} else {
+				m.lastOffset = newOffset
 			}
 		}
 	}
 }
 
-func (m *GossipMonitor) processGossipFile(filePath string) error {
+func (m *GossipMonitor) processGossipFile(filePath string, offset int64) (int64, error) {
 	if filePath == "" {
-		return fmt.Errorf("empty file path")
+		return offset, fmt.Errorf("empty file path")
 	}
 
 	file, err := os.Open(filePath)
 	if err != nil {
-		return fmt.Errorf("failed to open gossip file: %w", err)
+		return offset, fmt.Errorf("failed to open gossip file: %w", err)
 	}
 	defer func() { _ = file.Close() }()
 
-	// track the latest peer status
+	if offset > 0 {
+		if _, err := file.Seek(offset, io.SeekStart); err != nil {
+			return offset, fmt.Errorf("failed to seek: %w", err)
+		}
+	}
+
 	var verifiedCount, unverifiedCount int64
 	var lastUpdateTime time.Time
+	currentPeers := make(map[string]bool)
+	bytesRead := int64(0)
 
-	// read line by line
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Bytes()
+		bytesRead += int64(len(line)) + 1 // +1 for newline
 
-		// parse JSON array
 		var entry []json.RawMessage
 		if err := json.Unmarshal(line, &entry); err != nil {
-			continue // skip malformed lines
+			continue
 		}
 
 		if len(entry) != 2 {
 			continue
 		}
 
-		// parse timestamp
 		var timestamp string
 		if err := json.Unmarshal(entry[0], &timestamp); err != nil {
 			continue
@@ -144,82 +161,158 @@ func (m *GossipMonitor) processGossipFile(filePath string) error {
 			continue
 		}
 
-		if len(eventData) != 2 {
+		if len(eventData) < 2 {
 			continue
 		}
 
-		// check if it's a child_peers status event
 		var eventType string
 		if err := json.Unmarshal(eventData[0], &eventType); err != nil {
 			continue
 		}
 
-		if eventType != "child_peers status" {
-			continue
+		switch eventType {
+		case "child_peers status":
+			verifiedCount, unverifiedCount = m.processChildPeers(eventData[1], currentPeers)
+			lastUpdateTime = entryTime
+
+		case "incoming request":
+			m.processIncomingRequest(eventData, entryTime)
 		}
-
-		// parse peer list
-		var peerList [][]json.RawMessage
-		if err := json.Unmarshal(eventData[1], &peerList); err != nil {
-			continue
-		}
-
-		// count peers by verification status
-		verified := int64(0)
-		unverified := int64(0)
-
-		for _, peer := range peerList {
-			if len(peer) != 2 {
-				continue
-			}
-
-			// parse peer status
-			var status PeerStatus
-			if err := json.Unmarshal(peer[1], &status); err != nil {
-				continue
-			}
-
-			if status.Verified {
-				verified++
-			} else {
-				unverified++
-			}
-		}
-
-		// update counts with latest data
-		verifiedCount = verified
-		unverifiedCount = unverified
-		lastUpdateTime = entryTime
 	}
 
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("scanner error: %w", err)
+		return offset, fmt.Errorf("scanner error: %w", err)
 	}
 
+	// update aggregate child peer metrics
 	if !lastUpdateTime.IsZero() {
 		metrics.SetP2PNonValPeerConnections(true, verifiedCount)
 		metrics.SetP2PNonValPeerConnections(false, unverifiedCount)
 		metrics.SetP2PNonValPeersTotal(verifiedCount + unverifiedCount)
 
+		// tier 2: mark absent child peers and age out stale ones
+		m.updateChildPeerState(currentPeers)
+
 		logger.DebugComponent("gossip", "Updated non-validator peer metrics: verified=%d, unverified=%d, total=%d",
 			verifiedCount, unverifiedCount, verifiedCount+unverifiedCount)
 	}
 
-	return nil
+	// tier 1: compute active incoming peers
+	m.updateActivePeers()
+
+	return offset + bytesRead, nil
 }
 
-// returns the path to the latest gossip log file
-func (m *GossipMonitor) getLatestGossipLogFile() (string, error) {
-	// get today's directory
-	today := time.Now().Format("20060102")
-	todayDir := filepath.Join(m.gossipDir, today)
-
-	// check if today's directory exists
-	if _, err := os.Stat(todayDir); os.IsNotExist(err) {
-		// fallback to getting the latest file in the gossip directory
-		return utils.GetLatestFile(m.gossipDir)
+// processChildPeers parses the child_peers status peer list and sets per-peer metrics.
+// Returns aggregate verified/unverified counts.
+func (m *GossipMonitor) processChildPeers(raw json.RawMessage, currentPeers map[string]bool) (verified, unverified int64) {
+	var peerList [][]json.RawMessage
+	if err := json.Unmarshal(raw, &peerList); err != nil {
+		return 0, 0
 	}
 
-	// get latest file in today's directory
+	for _, peer := range peerList {
+		if len(peer) != 2 {
+			continue
+		}
+
+		var info PeerInfo
+		if err := json.Unmarshal(peer[0], &info); err != nil {
+			continue
+		}
+
+		var status PeerStatus
+		if err := json.Unmarshal(peer[1], &status); err != nil {
+			continue
+		}
+
+		if status.Verified {
+			verified++
+		} else {
+			unverified++
+		}
+
+		// tier 2: per-peer detail
+		metrics.SetChildPeerConnected(info.IP, status.Verified, true)
+		metrics.SetChildPeerConnections(info.IP, status.ConnectionCount)
+		currentPeers[info.IP] = true
+	}
+
+	return verified, unverified
+}
+
+// processIncomingRequest handles an "incoming request" event.
+func (m *GossipMonitor) processIncomingRequest(eventData []json.RawMessage, entryTime time.Time) {
+	if len(eventData) < 2 {
+		return
+	}
+
+	var ipPort string
+	if err := json.Unmarshal(eventData[1], &ipPort); err != nil {
+		return
+	}
+
+	peerIP, _, err := net.SplitHostPort(ipPort)
+	if err != nil {
+		peerIP = ipPort // fallback: use as-is if no port
+	}
+
+	metrics.IncrementIncomingRequests(peerIP)
+	metrics.SetIncomingPeerLastSeen(peerIP, float64(entryTime.Unix()))
+	m.peerLastSeen[peerIP] = entryTime
+}
+
+// updateChildPeerState marks absent child peers as disconnected and removes stale entries.
+func (m *GossipMonitor) updateChildPeerState(currentPeers map[string]bool) {
+	now := time.Now()
+
+	// update known peers with current presence
+	for ip := range currentPeers {
+		m.knownChildPeers[ip] = now
+	}
+
+	// mark absent peers as disconnected, remove stale ones
+	for ip, lastSeen := range m.knownChildPeers {
+		if currentPeers[ip] {
+			continue
+		}
+		if now.Sub(lastSeen) > childPeerStaleTTL {
+			delete(m.knownChildPeers, ip)
+		} else {
+			metrics.SetChildPeerConnected(ip, false, false)
+			metrics.SetChildPeerConnections(ip, 0)
+		}
+	}
+}
+
+// updateActivePeers computes the count of incoming peers seen within the active TTL.
+func (m *GossipMonitor) updateActivePeers() {
+	cutoff := time.Now().Add(-incomingPeerActiveTTL)
+	active := int64(0)
+
+	for ip, lastSeen := range m.peerLastSeen {
+		if lastSeen.After(cutoff) {
+			active++
+		} else {
+			delete(m.peerLastSeen, ip)
+		}
+	}
+
+	metrics.SetIncomingPeersActive(active)
+}
+
+// getLatestHourlyLogFile returns the latest log file in an hourly directory structure.
+func getLatestHourlyLogFile(baseDir string) (string, error) {
+	today := time.Now().Format("20060102")
+	todayDir := filepath.Join(baseDir, today)
+
+	if _, err := os.Stat(todayDir); os.IsNotExist(err) {
+		return utils.GetLatestFile(baseDir)
+	}
+
 	return utils.GetLatestFile(todayDir)
+}
+
+func (m *GossipMonitor) getLatestGossipLogFile() (string, error) {
+	return getLatestHourlyLogFile(m.gossipDir)
 }

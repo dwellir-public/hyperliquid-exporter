@@ -1162,3 +1162,85 @@ func SetP2PNonValPeersTotal(total int64) {
 		labels: []attribute.KeyValue{},
 	}
 }
+
+// P2P per-peer metric setters
+
+func IncrementIncomingRequests(peerIP string) {
+	HLP2PIncomingRequestsTotalCounter.Add(sharedCtx, 1,
+		api.WithAttributes(attribute.String("peer_ip", peerIP)))
+}
+
+func SetIncomingPeerLastSeen(peerIP string, ts float64) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+
+	if _, exists := labeledValues[HLP2PIncomingPeerLastSeenGauge]; !exists {
+		labeledValues[HLP2PIncomingPeerLastSeenGauge] = make(map[string]labeledValue)
+	}
+
+	labeledValues[HLP2PIncomingPeerLastSeenGauge][peerIP] = labeledValue{
+		value:  ts,
+		labels: []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
+	}
+}
+
+func SetIncomingPeersActive(count int64) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	currentValues[HLP2PIncomingPeersActiveGauge] = float64(count)
+}
+
+func SetChildPeerConnected(peerIP string, verified bool, connected bool) {
+	verifiedStr := "false"
+	if verified {
+		verifiedStr = "true"
+	}
+
+	val := float64(0)
+	if connected {
+		val = 1
+	}
+
+	key := peerIP + ":" + verifiedStr
+
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+
+	if _, exists := labeledValues[HLP2PChildPeerConnectedGauge]; !exists {
+		labeledValues[HLP2PChildPeerConnectedGauge] = make(map[string]labeledValue)
+	}
+
+	labeledValues[HLP2PChildPeerConnectedGauge][key] = labeledValue{
+		value: val,
+		labels: []attribute.KeyValue{
+			attribute.String("peer_ip", peerIP),
+			attribute.String("verified", verifiedStr),
+		},
+	}
+}
+
+func SetChildPeerConnections(peerIP string, count int) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+
+	if _, exists := labeledValues[HLP2PChildPeerConnectionsGauge]; !exists {
+		labeledValues[HLP2PChildPeerConnectionsGauge] = make(map[string]labeledValue)
+	}
+
+	labeledValues[HLP2PChildPeerConnectionsGauge][peerIP] = labeledValue{
+		value:  float64(count),
+		labels: []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
+	}
+}
+
+func IncrementStreamConnections(peerIP, connType string) {
+	HLP2PStreamConnectionsTotalCounter.Add(sharedCtx, 1,
+		api.WithAttributes(
+			attribute.String("peer_ip", peerIP),
+			attribute.String("type", connType)))
+}
+
+func IncrementVerifications(peerIP string) {
+	HLP2PVerificationsTotalCounter.Add(sharedCtx, 1,
+		api.WithAttributes(attribute.String("peer_ip", peerIP)))
+}

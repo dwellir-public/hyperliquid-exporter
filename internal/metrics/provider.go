@@ -54,6 +54,11 @@ func getAllObservables() []api.Observable {
 		HLP2PNonValPeerConnectionsGauge,
 		HLP2PNonValPeersTotalGauge,
 
+		// P2P per-peer metrics
+		HLP2PIncomingPeerLastSeenGauge,
+		HLP2PChildPeerConnectedGauge,
+		HLP2PChildPeerConnectionsGauge,
+
 		// hl-node client metrics
 		HLSoftwareVersionInfo,
 		HLSoftwareUpToDate,

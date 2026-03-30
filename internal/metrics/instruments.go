@@ -113,6 +113,17 @@ var (
 	HLP2PNonValPeerConnectionsGauge api.Float64ObservableGauge
 	HLP2PNonValPeersTotalGauge      api.Float64ObservableGauge
 
+	// P2P peer metrics (per-peer detail)
+	HLP2PIncomingRequestsTotalCounter api.Int64Counter
+	HLP2PIncomingPeerLastSeenGauge    api.Float64ObservableGauge
+	HLP2PIncomingPeersActiveGauge     api.Float64ObservableGauge
+	HLP2PChildPeerConnectedGauge      api.Float64ObservableGauge
+	HLP2PChildPeerConnectionsGauge    api.Float64ObservableGauge
+
+	// P2P gossip connection metrics
+	HLP2PStreamConnectionsTotalCounter api.Int64Counter
+	HLP2PVerificationsTotalCounter     api.Int64Counter
+
 	// monitor health metrics
 	HLConsensusMonitorLastProcessedGauge api.Int64ObservableGauge
 	HLConsensusMonitorLinesCounter       api.Int64Counter
@@ -822,6 +833,64 @@ func createInstruments() error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create P2P non-validator peers total gauge: %w", err)
+	}
+
+	// P2P per-peer metrics
+	HLP2PIncomingRequestsTotalCounter, err = meter.Int64Counter(
+		"hl_p2p_incoming_requests_total",
+		api.WithDescription("Total incoming gossip requests per peer IP"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create incoming requests counter: %w", err)
+	}
+
+	HLP2PIncomingPeerLastSeenGauge, err = meter.Float64ObservableGauge(
+		"hl_p2p_incoming_peer_last_seen",
+		api.WithDescription("Unix timestamp of last incoming request per peer IP"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create incoming peer last seen gauge: %w", err)
+	}
+
+	HLP2PIncomingPeersActiveGauge, err = meter.Float64ObservableGauge(
+		"hl_p2p_incoming_peers_active",
+		api.WithDescription("Number of incoming peers seen in last 5 minutes"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create incoming peers active gauge: %w", err)
+	}
+
+	HLP2PChildPeerConnectedGauge, err = meter.Float64ObservableGauge(
+		"hl_p2p_child_peer_connected",
+		api.WithDescription("Whether a child peer is connected (1) or absent (0)"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create child peer connected gauge: %w", err)
+	}
+
+	HLP2PChildPeerConnectionsGauge, err = meter.Float64ObservableGauge(
+		"hl_p2p_child_peer_connections",
+		api.WithDescription("Number of connections per child peer"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create child peer connections gauge: %w", err)
+	}
+
+	// P2P gossip connection metrics
+	HLP2PStreamConnectionsTotalCounter, err = meter.Int64Counter(
+		"hl_p2p_stream_connections_total",
+		api.WithDescription("Total stream connections per peer IP and type"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create stream connections counter: %w", err)
+	}
+
+	HLP2PVerificationsTotalCounter, err = meter.Int64Counter(
+		"hl_p2p_verifications_total",
+		api.WithDescription("Total gossip RPC verifications per peer IP"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create verifications counter: %w", err)
 	}
 
 	return nil

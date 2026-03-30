@@ -1,0 +1,174 @@
+package monitors
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
+)
+
+type GossipConnectionsMonitor struct {
+	config     *config.Config
+	dir        string
+	lastFile   string
+	lastOffset int64
+}
+
+func NewGossipConnectionsMonitor(cfg *config.Config) *GossipConnectionsMonitor {
+	return &GossipConnectionsMonitor{
+		config: cfg,
+		dir:    filepath.Join(cfg.NodeHome, "data", "node_logs", "gossip_connections", "hourly"),
+	}
+}
+
+func StartGossipConnectionsMonitor(ctx context.Context, cfg *config.Config, errCh chan<- error) {
+	m := NewGossipConnectionsMonitor(cfg)
+
+	if _, err := os.Stat(m.dir); os.IsNotExist(err) {
+		logger.InfoComponent("gossip", "Gossip connections directory not found, monitoring disabled: %s", m.dir)
+		return
+	}
+
+	logger.InfoComponent("gossip", "Starting gossip connections monitor")
+	m.monitor(ctx, errCh)
+}
+
+func (m *GossipConnectionsMonitor) monitor(ctx context.Context, errCh chan<- error) {
+	ticker := time.NewTicker(gossipPollInterval)
+	defer ticker.Stop()
+
+	// process immediately on startup
+	if filePath, err := getLatestHourlyLogFile(m.dir); err == nil && filePath != "" {
+		logger.InfoComponent("gossip", "First run: processing gossip connections file %s", filePath)
+		m.lastFile = filePath
+		if newOffset, err := m.processFile(filePath, 0); err != nil {
+			logger.ErrorComponent("gossip", "Initial gossip connections processing error: %v", err)
+		} else {
+			m.lastOffset = newOffset
+		}
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			logger.InfoComponent("gossip", "Gossip connections monitor shutting down")
+			return
+		case <-ticker.C:
+			filePath, err := getLatestHourlyLogFile(m.dir)
+			if err != nil {
+				logger.ErrorComponent("gossip", "Error getting latest gossip connections file: %v", err)
+				continue
+			}
+
+			if filePath != m.lastFile && filePath != "" {
+				logger.InfoComponent("gossip", "Switching to new gossip connections file: %s", filePath)
+				m.lastFile = filePath
+				m.lastOffset = 0
+			}
+
+			newOffset, err := m.processFile(filePath, m.lastOffset)
+			if err != nil {
+				logger.ErrorComponent("gossip", "Error processing gossip connections file: %v", err)
+				select {
+				case errCh <- fmt.Errorf("gossip connections monitor: %w", err):
+				case <-ctx.Done():
+					return
+				}
+			} else {
+				m.lastOffset = newOffset
+			}
+		}
+	}
+}
+
+func (m *GossipConnectionsMonitor) processFile(filePath string, offset int64) (int64, error) {
+	if filePath == "" {
+		return offset, fmt.Errorf("empty file path")
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return offset, fmt.Errorf("failed to open gossip connections file: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+
+	if offset > 0 {
+		if _, err := file.Seek(offset, io.SeekStart); err != nil {
+			return offset, fmt.Errorf("failed to seek: %w", err)
+		}
+	}
+
+	bytesRead := int64(0)
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		bytesRead += int64(len(line)) + 1
+
+		var entry []json.RawMessage
+		if err := json.Unmarshal(line, &entry); err != nil {
+			continue
+		}
+
+		if len(entry) != 2 {
+			continue
+		}
+
+		var eventData []json.RawMessage
+		if err := json.Unmarshal(entry[1], &eventData); err != nil {
+			continue
+		}
+
+		if len(eventData) < 2 {
+			continue
+		}
+
+		var eventType string
+		if err := json.Unmarshal(eventData[0], &eventType); err != nil {
+			continue
+		}
+
+		switch eventType {
+		case "handle_stream_connection":
+			if len(eventData) < 3 {
+				continue
+			}
+			var ipPort, connType string
+			if err := json.Unmarshal(eventData[1], &ipPort); err != nil {
+				continue
+			}
+			if err := json.Unmarshal(eventData[2], &connType); err != nil {
+				continue
+			}
+			peerIP, _, err := net.SplitHostPort(ipPort)
+			if err != nil {
+				peerIP = ipPort
+			}
+			metrics.IncrementStreamConnections(peerIP, connType)
+
+		case "verified gossip rpc":
+			var peer struct {
+				IP string `json:"Ip"`
+			}
+			if err := json.Unmarshal(eventData[1], &peer); err != nil {
+				continue
+			}
+			metrics.IncrementVerifications(peer.IP)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return offset, fmt.Errorf("scanner error: %w", err)
+	}
+
+	return offset + bytesRead, nil
+}

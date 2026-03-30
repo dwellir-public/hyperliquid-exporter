@@ -1,4 +1,4 @@
-BINARY_NAME := hl_exporter
+BINARY_NAME := hyperliquid-exporter
 BUILD_DIR := bin
 BUILD_TIME_UTC := $(shell date -u +'%Y-%m-%d_%H:%M:%S')
 COMMIT  := $(shell git rev-parse --short HEAD)
@@ -39,7 +39,7 @@ endif
 
 build:
 	@echo "==> Building $(BINARY_NAME)..."
-	@go build -ldflags "-X main.buildTimeUTC=$(BUILD_TIME_UTC) -X main.commit=$(COMMIT) -X main.version=$(VERSION_LABEL)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/hl-exporter
+	@go build -ldflags "-X main.buildTimeUTC=$(BUILD_TIME_UTC) -X main.commit=$(COMMIT) -X main.version=$(VERSION_LABEL)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/hyperliquid-exporter
 
 clean:
 	@echo "Cleaning up..."

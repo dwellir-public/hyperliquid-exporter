@@ -2,9 +2,8 @@
 .env
 
 # Ignore any binaries
-hl_exporter
-hl-exporter
-hl-exporter-*
+hyperliquid-exporter
+hyperliquid-exporter-*
 bin/
 
 # Ignore hl-python-venv directory

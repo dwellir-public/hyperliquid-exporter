@@ -1,5 +1,5 @@
 services:
-  hl_exporter:
+  hyperliquid-exporter:
     container_name: hyperliquid_exporter
     build: .
     command:

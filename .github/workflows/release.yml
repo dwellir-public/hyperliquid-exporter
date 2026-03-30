@@ -231,7 +231,7 @@ jobs:
       - name: Rename binary with tag
         shell: bash
         run: |
-          mv ./bin/hl_exporter ./bin/hl_exporter-${{ steps.compute_tag.outputs.tag }}
+          mv ./bin/hyperliquid-exporter ./bin/hyperliquid-exporter-${{ steps.compute_tag.outputs.tag }}
           ls -lh ./bin/
 
       - name: Create Git tag
@@ -285,11 +285,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name:         ${{ steps.compute_tag.outputs.tag }}
-          name:             hl_exporter ${{ steps.compute_tag.outputs.tag }}
+          name:             hyperliquid-exporter ${{ steps.compute_tag.outputs.tag }}
           body:             ${{ steps.compute_tag.outputs.is_prerelease == 'true'
                               && steps.git-cliff-rc.outputs.content
                               || steps.git-cliff-final.outputs.content }}
-          files:            ./bin/hl_exporter-${{ steps.compute_tag.outputs.tag }}
+          files:            ./bin/hyperliquid-exporter-${{ steps.compute_tag.outputs.tag }}
           prerelease:       ${{ steps.compute_tag.outputs.is_prerelease }}
           overwrite_files:  true  # rerun resilience
           make_latest:      ${{ steps.compute_tag.outputs.is_prerelease == 'false' }}  # finals only

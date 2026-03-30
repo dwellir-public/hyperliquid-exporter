@@ -15,7 +15,7 @@ make build
 ### Basic Usage
 
 ```bash
-./bin/hl_exporter start --chain mainnet [OPTIONS]
+./bin/hyperliquid-exporter start --chain mainnet [OPTIONS]
 
 OPTIONS:
   --chain              Chain type: 'mainnet' or 'testnet' (required)
@@ -27,9 +27,9 @@ OPTIONS:
   --otlp               Enable OTLP export (requires --alias and --otlp-endpoint)
 ```
 
-Run `./bin/hl_exporter start --help` for a complete list of flags.
+Run `./bin/hyperliquid-exporter start --help` for a complete list of flags.
 
-Example: `./bin/hl_exporter start --chain mainnet --replica-metrics --evm-metrics`.
+Example: `./bin/hyperliquid-exporter start --chain mainnet --replica-metrics --evm-metrics`.
 
 By default, the exporter:
 - Exposes Prometheus metrics on `:8086/metrics`
@@ -50,7 +50,7 @@ After=network.target
 [Service]
 WorkingDirectory=$HOME/hyperliquid-exporter
 
-ExecStart=$HOME/hyperliquid-exporter/bin/hl_exporter start --chain $CHAIN [options]
+ExecStart=$HOME/hyperliquid-exporter/bin/hyperliquid-exporter start --chain $CHAIN [options]
 
 Restart=always
 RestartSec=10
@@ -64,7 +64,7 @@ WantedBy=multi-user.target" | sudo tee /etc/systemd/system/hyperliquid-exporter.
 
 ## Run with Docker
 
-Use Docker to run `hl_exporter` in a container:
+Use Docker to run `hyperliquid-exporter` in a container:
 
 1. Edit `docker-compose.yml` to set the correct paths for your Hyperliquid node data directory and binary.
 

@@ -290,7 +290,7 @@ func processBlockData(blockData any, isoTimestamp time.Time) (string, error) {
 			metrics.UpdateMaxGasLimit(gasLimit)
 
 			if blockTypeMetricsEnabled {
-				if gasLimit <= 2_000_000 {
+				if gasLimit <= 5_000_000 {
 					blockType = "standard"
 				} else if gasLimit >= 30_000_000 {
 					blockType = "high"

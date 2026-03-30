@@ -107,6 +107,10 @@ func Start(ctx context.Context, cfg config.Config) {
 	logger.InfoComponent("gossip", "Initializing gossip connections monitor...")
 	go monitors.StartGossipConnectionsMonitor(monitorCtx, &cfg, gossipConnErrCh, registerPeer)
 
+	if registerPeer != nil {
+		go monitors.StartOutboundPeersMonitor(monitorCtx, &cfg, registerPeer)
+	}
+
 	if cfg.EnableReplicaMetrics {
 		logger.InfoComponent("replica", "Initializing replica commands monitor (streaming)...")
 		replicaMonitor := monitors.NewReplicaMonitor(cfg.ReplicaDataDir, cfg.ReplicaBufferSize)

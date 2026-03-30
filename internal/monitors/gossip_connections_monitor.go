@@ -69,7 +69,11 @@ func (m *GossipConnectionsMonitor) monitor(ctx context.Context, errCh chan<- err
 				continue
 			}
 
-			if filePath != m.lastFile && filePath != "" {
+			if filePath == "" {
+				continue
+			}
+
+			if filePath != m.lastFile {
 				logger.InfoComponent("gossip", "Switching to new gossip connections file: %s", filePath)
 				m.lastFile = filePath
 				m.lastOffset = 0

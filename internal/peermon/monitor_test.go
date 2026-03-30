@@ -36,24 +36,20 @@ func TestMonitor_Register(t *testing.T) {
 	m.Register("10.0.0.1")
 	m.Register("10.0.0.2")
 
-	// Drain into peer set
-	m.drainRegistrations()
 	assert.Equal(t, 2, m.peers.Len())
 }
 
-func TestMonitor_RegisterBufferFull(t *testing.T) {
+func TestMonitor_RegisterHighVolume(t *testing.T) {
 	initTestMetrics(t)
-	m := &Monitor{
-		peers:    NewPeerSet(t.TempDir()),
-		register: make(chan string, 2), // tiny buffer
+	m := New(t.TempDir())
+
+	// simulate thousands of registrations for 5 unique IPs (like tcp_traffic startup)
+	for i := 0; i < 5000; i++ {
+		m.Register("10.0.0." + strconv.Itoa(i%5+1))
 	}
 
-	m.Register("10.0.0.1")
-	m.Register("10.0.0.2")
-	m.Register("10.0.0.3") // should be dropped, not block
-
-	m.drainRegistrations()
-	assert.Equal(t, 2, m.peers.Len())
+	// all 5 unique IPs registered, no drops
+	assert.Equal(t, 5, m.peers.Len())
 }
 
 func TestMonitor_StartAndShutdown(t *testing.T) {
@@ -68,7 +64,7 @@ func TestMonitor_StartAndShutdown(t *testing.T) {
 
 	// Register a peer
 	m.Register("127.0.0.1")
-	time.Sleep(50 * time.Millisecond) // let the select loop pick it up
+	time.Sleep(50 * time.Millisecond)
 
 	cancel()
 	time.Sleep(100 * time.Millisecond) // let shutdown complete
@@ -118,7 +114,7 @@ func TestMonitor_StartProbeCycleSkipsWhileRunning(t *testing.T) {
 	m.probeWG.Wait()
 }
 
-func TestMonitor_DrainRegistrationsWhileProbeRunning(t *testing.T) {
+func TestMonitor_RegisterWhileProbeRunning(t *testing.T) {
 	initTestMetrics(t)
 	m := New(t.TempDir())
 	_, _ = m.peers.Register("10.0.0.1")
@@ -137,7 +133,6 @@ func TestMonitor_DrainRegistrationsWhileProbeRunning(t *testing.T) {
 
 	m.Register("10.0.0.2")
 	m.Register("10.0.0.3")
-	m.drainRegistrations()
 
 	assert.Equal(t, 3, m.peers.Len())
 
@@ -168,7 +163,7 @@ func TestMonitor_ProbeAllUsesPerPeerDeadline(t *testing.T) {
 	assert.Less(t, time.Since(start), 200*time.Millisecond)
 }
 
-func TestMonitor_ProcessRegistrationRemovesEvictedPeerMetrics(t *testing.T) {
+func TestMonitor_RegisterEvictsOldest(t *testing.T) {
 	initTestMetrics(t)
 	m := New(t.TempDir())
 
@@ -196,7 +191,7 @@ func TestMonitor_ProcessRegistrationRemovesEvictedPeerMetrics(t *testing.T) {
 		count = v
 	}
 
-	m.processRegistration("10.0.0.200")
+	m.Register("10.0.0.200")
 
 	assert.Equal(t, "10.0.0.1", removed)
 	assert.Equal(t, int64(maxPeers), count)

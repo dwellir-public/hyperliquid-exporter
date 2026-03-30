@@ -13,7 +13,6 @@ import (
 const (
 	probeInterval     = 1 * time.Minute
 	initialProbeDelay = 2 * time.Second
-	registerBufLen    = 256
 	maxConcurrent     = 10
 )
 
@@ -27,7 +26,6 @@ var (
 // Monitor probes known peers for TCP latency and exposes metrics.
 type Monitor struct {
 	peers        *PeerSet
-	register     chan string
 	probeRunning atomic.Bool
 	probeWG      sync.WaitGroup
 	runProbe     func(context.Context, []Peer)
@@ -36,21 +34,20 @@ type Monitor struct {
 // New creates a Monitor that persists peers under dataDir.
 func New(dataDir string) *Monitor {
 	m := &Monitor{
-		peers:    NewPeerSet(dataDir),
-		register: make(chan string, registerBufLen),
+		peers: NewPeerSet(dataDir),
 	}
 	m.runProbe = m.probeAll
 	return m
 }
 
-// Register queues a peer IP for addition to the monitored set.
-// Non-blocking; drops the registration with a warning if the buffer is full.
+// Register adds a peer IP to the monitored set.
+// Safe to call from any goroutine — the underlying PeerSet is mutex-protected.
 func (m *Monitor) Register(ip string) {
-	select {
-	case m.register <- ip:
-	default:
-		logger.WarningComponent("peer-latency", "Registration channel full, dropping peer %s", ip)
+	evictedIP, evicted := m.peers.Register(ip)
+	if evicted {
+		removePeerMetrics(evictedIP)
 	}
+	setPeerCount(int64(m.peers.Len()))
 }
 
 // Start runs the monitor loop until ctx is cancelled.
@@ -60,7 +57,7 @@ func (m *Monitor) Start(ctx context.Context, errCh chan<- error) {
 	} else if n := m.peers.Len(); n > 0 {
 		logger.InfoComponent("peer-latency", "Loaded %d peers from disk", n)
 	}
-	m.syncMonitoredCount()
+	setPeerCount(int64(m.peers.Len()))
 
 	ticker := time.NewTicker(probeInterval)
 	defer ticker.Stop()
@@ -70,56 +67,26 @@ func (m *Monitor) Start(ctx context.Context, errCh chan<- error) {
 	for {
 		select {
 		case <-ctx.Done():
-			m.drainRegistrations()
 			m.probeWG.Wait()
 			if err := m.peers.Save(); err != nil {
 				logger.WarningComponent("peer-latency", "Failed to save peers on shutdown: %v", err)
 			}
 			return
 
-		case ip := <-m.register:
-			m.processRegistration(ip)
-
 		case <-initialProbe:
 			initialProbe = nil
-			m.drainRegistrations()
 			m.saveIfDirty()
 			if _, skipped := m.startProbeCycle(ctx); skipped {
 				logger.WarningComponent("peer-latency", "Previous probe cycle still running, skipping initial probe")
 			}
 
 		case <-ticker.C:
-			m.drainRegistrations()
 			m.saveIfDirty()
 			if _, skipped := m.startProbeCycle(ctx); skipped {
 				logger.WarningComponent("peer-latency", "Previous probe cycle still running, skipping tick")
 			}
 		}
 	}
-}
-
-// drainRegistrations processes all pending registrations without blocking.
-func (m *Monitor) drainRegistrations() {
-	for {
-		select {
-		case ip := <-m.register:
-			m.processRegistration(ip)
-		default:
-			return
-		}
-	}
-}
-
-func (m *Monitor) processRegistration(ip string) {
-	evictedIP, evicted := m.peers.Register(ip)
-	if evicted {
-		removePeerMetrics(evictedIP)
-	}
-	m.syncMonitoredCount()
-}
-
-func (m *Monitor) syncMonitoredCount() {
-	setPeerCount(int64(m.peers.Len()))
 }
 
 func (m *Monitor) saveIfDirty() {
@@ -137,7 +104,7 @@ func (m *Monitor) startProbeCycle(ctx context.Context) (started bool, skipped bo
 	}
 
 	peers := m.peers.All()
-	m.syncMonitoredCount()
+	setPeerCount(int64(m.peers.Len()))
 	if len(peers) == 0 {
 		m.probeRunning.Store(false)
 		return false, false

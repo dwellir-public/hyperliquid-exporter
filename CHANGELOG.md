@@ -2,7 +2,9 @@
 
 All notable changes to the Hyperliquid Exporter will be documented in this file.
 
-## [Unreleased]
+## [2.1.0]
+
+Initial release post-fork.
 
 ### Added
 - Per-peer P2P metrics: `hl_p2p_incoming_requests_total`, `hl_p2p_incoming_peer_last_seen`, `hl_p2p_incoming_peers_active`, `hl_p2p_child_peer_connected`, `hl_p2p_child_peer_connections`

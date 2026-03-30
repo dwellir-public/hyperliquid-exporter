@@ -152,12 +152,12 @@ Example alert rule migration:
 
 ### Old Configuration
 ```bash
-./hl_exporter start --evm --enable-otlp
+./hyperliquid-exporter start --evm --enable-otlp
 ```
 
 ### New Configuration
 ```bash
-./hl_exporter start --evm-metrics --otlp --otlp-endpoint "your-endpoint.com"
+./hyperliquid-exporter start --evm-metrics --otlp --otlp-endpoint "your-endpoint.com"
 ```
 
 ## Migration Checklist

@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Run
 
 ```bash
-make build                # → bin/hl_exporter (embeds version, commit, build time via ldflags)
+make build                # → bin/hyperliquid-exporter (embeds version, commit, build time via ldflags)
 make test                 # go test -shuffle=on ./...
 make test RACE=1          # with race detector
 make test V=1 N=3         # verbose, run 3 times
@@ -14,7 +14,7 @@ make fmt                  # gofmt -s -w .
 make clean                # remove bin/
 
 # Run
-./bin/hl_exporter start --chain mainnet [flags]
+./bin/hyperliquid-exporter start --chain mainnet [flags]
 
 # Docker
 docker compose up
@@ -30,7 +30,7 @@ docker compose up
 
 ### Startup flow
 
-`cmd/hl-exporter/main.go` → parses flags → `config.LoadConfig()` → resolves validator identity → `metrics.InitMetrics()` (Prometheus + optional OTLP) → `exporter.Start()` launches all monitor goroutines.
+`cmd/hyperliquid-exporter/main.go` → parses flags → `config.LoadConfig()` → resolves validator identity → `metrics.InitMetrics()` (Prometheus + optional OTLP) → `exporter.Start()` launches all monitor goroutines.
 
 ### Key packages
 

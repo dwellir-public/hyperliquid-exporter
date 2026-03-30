@@ -2,6 +2,24 @@
 
 All notable changes to the Hyperliquid Exporter will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- Per-peer P2P metrics: `hl_p2p_incoming_requests_total`, `hl_p2p_incoming_peer_last_seen`, `hl_p2p_incoming_peers_active`, `hl_p2p_child_peer_connected`, `hl_p2p_child_peer_connections`
+- Gossip connection metrics: `hl_p2p_stream_connections_total`, `hl_p2p_verifications_total`
+- New gossip connections monitor for tracking stream connections and verifications
+- CI test workflow
+- Test coverage across cache, config, metrics, replica, utils, abci, logger, hyperliquid-api, contracts, and monitors
+
+### Changed
+- Binary renamed from `hl_exporter` to `hyperliquid-exporter` (cmd directory, Dockerfile, CI, docs)
+- Improved gossip monitor line tailer and disconnect state preservation
+- Upgraded to Go 1.26.1 with dependency updates
+- Improved Makefile build system
+- Updated CI release workflow
+- Refined CLI help messages
+- Lint fixes throughout codebase
+
 ## [2.0.0] - 2025-08-03
 
 ### Added

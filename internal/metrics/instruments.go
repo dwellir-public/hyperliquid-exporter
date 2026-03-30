@@ -6,7 +6,7 @@ import (
 	api "go.opentelemetry.io/otel/metric"
 )
 
-// metric instruments for hl_exporter
+// metric instruments for hyperliquid-exporter
 var (
 	// counters consensus
 	HLConsensusProposerCounter api.Int64Counter

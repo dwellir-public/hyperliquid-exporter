@@ -46,6 +46,8 @@ func TestProcessConnectionsFile_VerifiedGossipRPC(t *testing.T) {
 }
 
 func TestProcessConnectionsFile_RegistersPeer(t *testing.T) {
+	initTestMetrics(t)
+
 	var (
 		mu   sync.Mutex
 		seen []string

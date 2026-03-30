@@ -32,6 +32,15 @@ func TestProbe_Reachable(t *testing.T) {
 		}
 	}()
 
+	// Skip if any priority port is unexpectedly open (would win the race).
+	for _, port := range []int{3001, 3002, 443, 80} {
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 50*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			t.Skipf("port %d unexpectedly open", port)
+		}
+	}
+
 	result := Probe(context.Background(), "127.0.0.1", 0)
 	assert.True(t, result.Reachable)
 	assert.Greater(t, result.Latency, time.Duration(0))
@@ -76,8 +85,8 @@ func TestProbe_FallsThrough(t *testing.T) {
 		}
 	}()
 
-	// Ensure ports 4000-4004 are not listening.
-	for port := 4000; port < 4005; port++ {
+	// Ensure no other candidate ports are listening.
+	for _, port := range []int{3001, 3002, 443, 80, 4000, 4001, 4002, 4003, 4004} {
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 50*time.Millisecond)
 		if err == nil {
 			_ = conn.Close()

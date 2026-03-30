@@ -8,10 +8,11 @@ import (
 	"time"
 )
 
-const (
-	probePortMin = 4000
-	probePortMax = 4010
-)
+var candidatePorts = []int{
+	3001, 3002, 443, 80,
+	4000, 4001, 4002, 4003, 4004, 4005,
+	4006, 4007, 4008, 4009, 4010,
+}
 
 var probeAttemptTimeout = 3 * time.Second
 
@@ -40,7 +41,7 @@ func Probe(ctx context.Context, ip string, preferredPort int) ProbeResult {
 	probeCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	ports := probePorts(preferredPort)
+	ports := fallbackPorts(preferredPort)
 	results := make(chan ProbeResult, len(ports))
 
 	var wg sync.WaitGroup
@@ -102,13 +103,12 @@ func tryPort(ctx context.Context, ip string, port int) (ProbeResult, bool) {
 	}, true
 }
 
-func probePorts(preferredPort int) []int {
-	ports := make([]int, 0, probePortMax-probePortMin+1)
-	for port := probePortMin; port <= probePortMax; port++ {
-		if port == preferredPort {
-			continue
+func fallbackPorts(preferredPort int) []int {
+	ports := make([]int, 0, len(candidatePorts))
+	for _, port := range candidatePorts {
+		if port != preferredPort {
+			ports = append(ports, port)
 		}
-		ports = append(ports, port)
 	}
 	return ports
 }

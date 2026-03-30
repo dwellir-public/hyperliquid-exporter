@@ -2,6 +2,11 @@
 
 All notable changes to the Hyperliquid Exporter will be documented in this file.
 
+## [2.1.1]
+
+### Changed
+- Peer latency prober now tries ports 3001, 3002, 443, 80 before the 4000-4010 range, improving reachability in environments with restrictive firewall rules
+
 ## [2.1.0]
 
 Initial release post-fork.

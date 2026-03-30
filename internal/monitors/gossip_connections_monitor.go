@@ -15,21 +15,23 @@ import (
 )
 
 type GossipConnectionsMonitor struct {
-	config     *config.Config
-	dir        string
-	lastFile   string
-	lastOffset int64
+	config       *config.Config
+	dir          string
+	lastFile     string
+	lastOffset   int64
+	registerPeer func(string)
 }
 
-func NewGossipConnectionsMonitor(cfg *config.Config) *GossipConnectionsMonitor {
+func NewGossipConnectionsMonitor(cfg *config.Config, registerPeer func(string)) *GossipConnectionsMonitor {
 	return &GossipConnectionsMonitor{
-		config: cfg,
-		dir:    filepath.Join(cfg.NodeHome, "data", "node_logs", "gossip_connections", "hourly"),
+		config:       cfg,
+		dir:          filepath.Join(cfg.NodeHome, "data", "node_logs", "gossip_connections", "hourly"),
+		registerPeer: registerPeer,
 	}
 }
 
-func StartGossipConnectionsMonitor(ctx context.Context, cfg *config.Config, errCh chan<- error) {
-	m := NewGossipConnectionsMonitor(cfg)
+func StartGossipConnectionsMonitor(ctx context.Context, cfg *config.Config, errCh chan<- error, registerPeer func(string)) {
+	m := NewGossipConnectionsMonitor(cfg, registerPeer)
 
 	if _, err := os.Stat(m.dir); os.IsNotExist(err) {
 		logger.InfoComponent("gossip", "Gossip connections directory not found, monitoring disabled: %s", m.dir)
@@ -134,6 +136,9 @@ func (m *GossipConnectionsMonitor) processFile(filePath string, offset int64) (i
 				peerIP = ipPort
 			}
 			metrics.IncrementStreamConnections(peerIP, connType)
+			if m.registerPeer != nil {
+				m.registerPeer(peerIP)
+			}
 
 		case "verified gossip rpc":
 			var peer struct {
@@ -143,6 +148,9 @@ func (m *GossipConnectionsMonitor) processFile(filePath string, offset int64) (i
 				return
 			}
 			metrics.IncrementVerifications(peer.IP)
+			if m.registerPeer != nil {
+				m.registerPeer(peer.IP)
+			}
 		}
 	})
 	if err != nil {

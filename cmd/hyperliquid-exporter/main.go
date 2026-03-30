@@ -87,6 +87,7 @@ func main() {
 	contractLimit := startCmd.Int("contract-metrics-limit", 20, "Maximum number of individual contract labels to retain")
 	enableReplicaMetrics := startCmd.Bool("replica-metrics", false, "Enable replica commands transaction metrics")
 	enableValidatorRTT := startCmd.Bool("validator-rtt", false, "Enable validator RTT monitoring")
+	enablePeerLatency := startCmd.Bool("peer-latency", false, "Enable peer latency monitoring")
 
 	if err := startCmd.Parse(os.Args[2:]); err != nil {
 		fmt.Fprintf(os.Stderr, "error parsing flags: %v\n", err)
@@ -117,10 +118,11 @@ func main() {
 		EnableCoreTxMetrics:   false,
 		UseLiveState:          false,
 		EnableReplicaMetrics:  *enableReplicaMetrics,
-		ReplicaDataDir:        "",                 // Always use default
-		ReplicaBufferSize:     8,                  // Always use default 8MB
-		EVMBlockTypeMetrics:   *enableEVM,         // Always enable block type metrics when EVM is enabled
-		EnableValidatorRTT:    enableValidatorRTT, // Use the bool pointer directly
+		ReplicaDataDir:        "",         // Always use default
+		ReplicaBufferSize:     8,          // Always use default 8MB
+		EVMBlockTypeMetrics:   *enableEVM, // Always enable block type metrics when EVM is enabled
+		EnableValidatorRTT:    enableValidatorRTT,
+		EnablePeerLatency:     enablePeerLatency,
 	}
 
 	cfg := config.LoadConfig(flags)

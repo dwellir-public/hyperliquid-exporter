@@ -60,6 +60,11 @@ func getAllObservables() []api.Observable {
 		HLP2PChildPeerConnectedGauge,
 		HLP2PChildPeerConnectionsGauge,
 
+		// Peer latency metrics
+		HLPeerLatencyGauge,
+		HLPeerReachableGauge,
+		HLPeerMonitoredCountGauge,
+
 		// hl-node client metrics
 		HLSoftwareVersionInfo,
 		HLSoftwareUpToDate,

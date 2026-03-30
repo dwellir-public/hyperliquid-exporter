@@ -124,6 +124,13 @@ var (
 	HLP2PStreamConnectionsTotalCounter api.Int64Counter
 	HLP2PVerificationsTotalCounter     api.Int64Counter
 
+	// Peer latency metrics
+	HLPeerLatencyGauge         api.Float64ObservableGauge
+	HLPeerReachableGauge       api.Float64ObservableGauge
+	HLPeerProbesTotalCounter   api.Int64Counter
+	HLPeerProbeFailuresCounter api.Int64Counter
+	HLPeerMonitoredCountGauge  api.Float64ObservableGauge
+
 	// monitor health metrics
 	HLConsensusMonitorLastProcessedGauge api.Int64ObservableGauge
 	HLConsensusMonitorLinesCounter       api.Int64Counter
@@ -891,6 +898,47 @@ func createInstruments() error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create verifications counter: %w", err)
+	}
+
+	// Peer latency metrics
+	HLPeerLatencyGauge, err = meter.Float64ObservableGauge(
+		"hl_peer_latency_us",
+		api.WithDescription("TCP connect latency to peer in microseconds"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create peer latency gauge: %w", err)
+	}
+
+	HLPeerReachableGauge, err = meter.Float64ObservableGauge(
+		"hl_peer_reachable",
+		api.WithDescription("Whether peer is reachable via TCP (1=yes, 0=no)"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create peer reachable gauge: %w", err)
+	}
+
+	HLPeerProbesTotalCounter, err = meter.Int64Counter(
+		"hl_peer_probes_total",
+		api.WithDescription("Total probe attempts per peer IP"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create peer probes counter: %w", err)
+	}
+
+	HLPeerProbeFailuresCounter, err = meter.Int64Counter(
+		"hl_peer_probe_failures_total",
+		api.WithDescription("Total failed probes per peer IP"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create peer probe failures counter: %w", err)
+	}
+
+	HLPeerMonitoredCountGauge, err = meter.Float64ObservableGauge(
+		"hl_peer_monitored_count",
+		api.WithDescription("Number of peers in the monitored set"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create peer monitored count gauge: %w", err)
 	}
 
 	return nil

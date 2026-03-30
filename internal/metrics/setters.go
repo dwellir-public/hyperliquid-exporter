@@ -1276,3 +1276,75 @@ func IncrementVerifications(peerIP string) {
 	HLP2PVerificationsTotalCounter.Add(sharedCtx, 1,
 		api.WithAttributes(attribute.String("peer_ip", peerIP)))
 }
+
+// Peer latency setters
+
+func SetPeerLatency(peerIP string, latencyUs float64) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+
+	if _, exists := labeledValues[HLPeerLatencyGauge]; !exists {
+		labeledValues[HLPeerLatencyGauge] = make(map[string]labeledValue)
+	}
+
+	labeledValues[HLPeerLatencyGauge][peerIP] = labeledValue{
+		value:  latencyUs,
+		labels: []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
+	}
+}
+
+func SetPeerReachable(peerIP string, reachable bool) {
+	val := float64(0)
+	if reachable {
+		val = 1
+	}
+
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+
+	if _, exists := labeledValues[HLPeerReachableGauge]; !exists {
+		labeledValues[HLPeerReachableGauge] = make(map[string]labeledValue)
+	}
+
+	labeledValues[HLPeerReachableGauge][peerIP] = labeledValue{
+		value:  val,
+		labels: []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
+	}
+}
+
+func IncrementPeerProbes(peerIP string) {
+	HLPeerProbesTotalCounter.Add(sharedCtx, 1,
+		api.WithAttributes(attribute.String("peer_ip", peerIP)))
+}
+
+func IncrementPeerProbeFailures(peerIP string) {
+	HLPeerProbeFailuresCounter.Add(sharedCtx, 1,
+		api.WithAttributes(attribute.String("peer_ip", peerIP)))
+}
+
+func RemovePeerLatency(peerIP string) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	if m, exists := labeledValues[HLPeerLatencyGauge]; exists {
+		delete(m, peerIP)
+	}
+}
+
+func RemovePeerReachable(peerIP string) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	if m, exists := labeledValues[HLPeerReachableGauge]; exists {
+		delete(m, peerIP)
+	}
+}
+
+func RemovePeerMetrics(peerIP string) {
+	RemovePeerLatency(peerIP)
+	RemovePeerReachable(peerIP)
+}
+
+func SetPeerMonitoredCount(count int64) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	currentValues[HLPeerMonitoredCountGauge] = float64(count)
+}

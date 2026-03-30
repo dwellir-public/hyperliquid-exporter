@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 func newTestGossipMonitor(t *testing.T) *GossipMonitor {
 	t.Helper()
 	initTestMetrics(t)
-	return NewGossipMonitor(&config.Config{NodeHome: t.TempDir()})
+	return NewGossipMonitor(&config.Config{NodeHome: t.TempDir()}, nil)
 }
 
 func writeGossipFile(t *testing.T, dir string, lines ...string) string {
@@ -55,6 +56,31 @@ func TestProcessGossipFile_IncomingRequest(t *testing.T) {
 	assert.Len(t, m.peerLastSeen, 2)
 	assert.Contains(t, m.peerLastSeen, "192.168.108.167")
 	assert.Contains(t, m.peerLastSeen, "10.0.0.1")
+}
+
+func TestProcessGossipFile_IncomingRequestRegistersPeer(t *testing.T) {
+	var (
+		mu   sync.Mutex
+		seen []string
+	)
+
+	m := NewGossipMonitor(&config.Config{NodeHome: t.TempDir()}, func(ip string) {
+		mu.Lock()
+		defer mu.Unlock()
+		seen = append(seen, ip)
+	})
+
+	lines := []string{
+		fmt.Sprintf(`["%s",["incoming request","192.168.108.167:57648",false]]`, recentTS(10)),
+	}
+
+	f := writeGossipFile(t, filepath.Join(m.gossipDir, "20260330"), lines...)
+	_, err := m.processGossipFile(f, 0)
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []string{"192.168.108.167"}, seen)
 }
 
 func TestProcessGossipFile_ChildPeersStatus(t *testing.T) {

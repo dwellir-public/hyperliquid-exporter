@@ -3,6 +3,7 @@ package monitors
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,7 +15,7 @@ import (
 func newTestGossipConnectionsMonitor(t *testing.T) *GossipConnectionsMonitor {
 	t.Helper()
 	initTestMetrics(t)
-	return NewGossipConnectionsMonitor(&config.Config{NodeHome: t.TempDir()})
+	return NewGossipConnectionsMonitor(&config.Config{NodeHome: t.TempDir()}, nil)
 }
 
 func TestProcessConnectionsFile_HandleStreamConnection(t *testing.T) {
@@ -42,6 +43,31 @@ func TestProcessConnectionsFile_VerifiedGossipRPC(t *testing.T) {
 	newOffset, err := m.processFile(f, 0)
 	require.NoError(t, err)
 	assert.Greater(t, newOffset, int64(0))
+}
+
+func TestProcessConnectionsFile_RegistersPeer(t *testing.T) {
+	var (
+		mu   sync.Mutex
+		seen []string
+	)
+
+	m := NewGossipConnectionsMonitor(&config.Config{NodeHome: t.TempDir()}, func(ip string) {
+		mu.Lock()
+		defer mu.Unlock()
+		seen = append(seen, ip)
+	})
+
+	lines := []string{
+		`["2026-03-30T05:00:09.841",["verified gossip rpc",{"Ip":"192.168.108.236"}]]`,
+	}
+
+	f := writeGossipFile(t, filepath.Join(m.dir, "20260330"), lines...)
+	_, err := m.processFile(f, 0)
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []string{"192.168.108.236"}, seen)
 }
 
 func TestProcessConnectionsFile_SkipsPerformingChecks(t *testing.T) {

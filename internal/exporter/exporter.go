@@ -33,6 +33,7 @@ func Start(ctx context.Context, cfg config.Config) {
 	replicaErrCh := make(chan error, 1)
 	latencyErrCh := make(chan error, 1)
 	gossipErrCh := make(chan error, 1)
+	gossipConnErrCh := make(chan error, 1)
 
 	logger.InfoComponent("core", "Initializing block monitor...")
 	go monitors.StartBlockMonitor(monitorCtx, cfg, blockErrCh)
@@ -81,9 +82,12 @@ func Start(ctx context.Context, cfg config.Config) {
 	logger.InfoComponent("latency", "Initializing validator latency monitor...")
 	go monitors.StartValidatorLatencyMonitor(monitorCtx, &cfg, latencyErrCh)
 
-	// start gossip monitor (only runs if gossip_rpc logs exist)
+	// start gossip monitors (only run if respective log dirs exist)
 	logger.InfoComponent("gossip", "Initializing gossip monitor...")
 	go monitors.StartGossipMonitor(monitorCtx, &cfg, gossipErrCh)
+
+	logger.InfoComponent("gossip", "Initializing gossip connections monitor...")
+	go monitors.StartGossipConnectionsMonitor(monitorCtx, &cfg, gossipConnErrCh)
 
 	if cfg.EnableReplicaMetrics {
 		logger.InfoComponent("replica", "Initializing replica commands monitor (streaming)...")
@@ -137,6 +141,8 @@ func Start(ctx context.Context, cfg config.Config) {
 			logger.ErrorComponent("latency", "Validator latency monitor error: %v", err)
 		case err := <-gossipErrCh:
 			logger.ErrorComponent("gossip", "Gossip monitor error: %v", err)
+		case err := <-gossipConnErrCh:
+			logger.ErrorComponent("gossip", "Gossip connections monitor error: %v", err)
 		case <-ctx.Done():
 			logger.InfoComponent("system", "Shutting down monitors...")
 			return

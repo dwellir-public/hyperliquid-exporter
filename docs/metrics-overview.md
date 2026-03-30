@@ -80,8 +80,15 @@ Metrics marked with `--replica-metrics` also require hl-node to be running with 
 |--------|------|--------|-------------|--------------|
 | `hl_p2p_non_val_peer_connections` | Gauge | `verified` | Number of non-validator peer connections by verification status | gossip_rpc logs |
 | `hl_p2p_non_val_peers_total` | Gauge | - | Total number of connected non-validator peers | gossip_rpc logs |
+| `hl_p2p_incoming_requests_total` | Counter | `peer_ip` | Total incoming gossip requests per peer IP | gossip_rpc logs |
+| `hl_p2p_incoming_peer_last_seen` | Gauge | `peer_ip` | Unix timestamp of last incoming request per peer IP | gossip_rpc logs |
+| `hl_p2p_incoming_peers_active` | Gauge | - | Number of incoming peers seen in last 5 minutes | gossip_rpc logs |
+| `hl_p2p_child_peer_connected` | Gauge | `peer_ip`, `verified` | Whether a child peer is connected (1) or absent (0) | gossip_rpc logs |
+| `hl_p2p_child_peer_connections` | Gauge | `peer_ip` | Number of connections per child peer | gossip_rpc logs |
+| `hl_p2p_stream_connections_total` | Counter | `peer_ip`, `type` | Total stream connections per peer IP and type | gossip_connections logs |
+| `hl_p2p_verifications_total` | Counter | `peer_ip` | Total gossip RPC verifications per peer IP | gossip_connections logs |
 
-P2P metrics track non-validator peer connections only
+The `incoming_*` metrics are particularly useful for downstream (non-validator) nodes where `child_peers status` is always empty — the upstream peer only appears in `incoming request` events. The `stream_connections` and `verifications` metrics come from a separate log directory (`gossip_connections/`) and track the TCP connection lifecycle.
 
 ## Software Version Metrics
 

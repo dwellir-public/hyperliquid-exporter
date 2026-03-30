@@ -110,6 +110,8 @@ func TestProcessBlockData_InvalidInput(t *testing.T) {
 }
 
 func TestProcessTransactions(t *testing.T) {
+	resetEVMGlobals(t)
+
 	tests := []struct {
 		name      string
 		body      map[string]any

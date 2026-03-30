@@ -87,7 +87,7 @@ Enhance peer metrics in three tiers, ordered by operational value:
 2. **Enrich child peer metrics** — extract per-peer detail from already-parsed `child_peers status`
 3. **Add connection lifecycle metrics** — parse `gossip_connections/` for TCP-level visibility
 
-Gate behind a `--peer-metrics` flag to control cardinality.
+All tiers are always-on — no opt-in flag. Peer counts are naturally small (1-2 upstream, handful of children), and the existing metrics cleanup loop already caps labeled values at 100 per metric, bounding cardinality regardless.
 
 ## Detailed Design
 
@@ -167,16 +167,14 @@ hl_p2p_verifications_total{peer_ip="192.168.108.236"} 423
 
 ## Implementation Phases
 
-1. **Fork & scaffold** — fork `validaoxyz/hyperliquid-exporter`, add `--peer-metrics` flag, wire up to monitor initialization
-2. **Tier 1: upstream peer tracking** — extend `GossipMonitor` to parse `incoming request`, expose per-peer counters and last-seen timestamps
-3. **Tier 2: child peer enrichment** — modify `GossipMonitor`, add per-peer gauges from `child_peers status`, add stale-peer cleanup
-4. **Tier 3: gossip_connections monitor** — new `GossipConnectionsMonitor`, register in startup
-5. **Grafana panels** — add peer panels to `Hyperliquid.json` dashboard (in the `ops` repo: `grafana/dashboards/Hyperliquid.json`)
-6. **Charm update** — expose `--peer-metrics` as a charm config option
+1. **Tier 1: upstream peer tracking** — extend `GossipMonitor` to parse `incoming request`, expose per-peer counters and last-seen timestamps
+2. **Tier 2: child peer enrichment** — modify `GossipMonitor`, add per-peer gauges from `child_peers status`, add stale-peer cleanup
+3. **Tier 3: gossip_connections monitor** — new `GossipConnectionsMonitor`, register in startup
+4. **Grafana panels** — add peer panels to `Hyperliquid.json` dashboard (in the `ops` repo: `grafana/dashboards/Hyperliquid.json`)
 
 ## Edge Cases & Safety
 
-- **High peer count (validators):** Cardinality bounded by configurable max peers + age-out. Tier 2–3 behind opt-in flag.
+- **High peer count (validators):** Cardinality bounded by the existing metrics cleanup loop (100 labels per metric) plus per-tier age-out logic.
 - **Log format changes:** HL node updates may change JSON structure. Parse defensively — log warnings on unknown formats, don't crash.
 - **Log rotation / missing hours:** Existing monitors already handle hourly file transitions. New monitor follows same pattern.
 - **Empty child_peers:** Downstream nodes always report `[]` — this is normal, not an error. Tier 2 metrics are what matter for these nodes.
@@ -201,4 +199,4 @@ These should be addressed separately from the peer metrics work.
 
 ## Summary
 
-The Hyperliquid node writes rich peer connectivity data to three log locations, but the exporter only extracts aggregate counts from one. By enhancing the existing `GossipMonitor` to expose per-peer detail from `child_peers status` and `incoming request` events, and adding a new monitor for `gossip_connections/` logs, operators gain visibility into which peers their node communicates with, connection health, and upstream identification — all critical for troubleshooting connectivity in a multi-node deployment. The work is structured in three tiers behind an opt-in flag to manage cardinality risk.
+The Hyperliquid node writes rich peer connectivity data to three log locations, but the exporter only extracts aggregate counts from one. By enhancing the existing `GossipMonitor` to expose per-peer detail from `child_peers status` and `incoming request` events, and adding a new monitor for `gossip_connections/` logs, operators gain visibility into which peers their node communicates with, connection health, and upstream identification — all critical for troubleshooting connectivity in a multi-node deployment. The work is structured in three tiers, all always-on, with cardinality bounded by the existing metrics cleanup loop.

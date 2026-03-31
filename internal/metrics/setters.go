@@ -1378,3 +1378,61 @@ func SetPeerMonitoredCount(count int64) {
 	defer metricsMutex.Unlock()
 	currentValues[HLPeerMonitoredCountGauge] = float64(count)
 }
+
+// Parent peer metric setters
+
+func SetParentPeer(peerIP string) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	if _, exists := labeledValues[HLNodeParentPeerGauge]; !exists {
+		labeledValues[HLNodeParentPeerGauge] = make(map[string]labeledValue)
+	}
+	labeledValues[HLNodeParentPeerGauge][peerIP] = labeledValue{
+		value:  1,
+		labels: []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
+	}
+}
+
+func RemoveParentPeer(peerIP string) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	for _, gauge := range []api.Observable{HLNodeParentPeerGauge, HLNodeParentPeerBytesGauge, HLNodeParentPeerLatencyGauge} {
+		if m, exists := labeledValues[gauge]; exists {
+			delete(m, peerIP)
+		}
+	}
+}
+
+func SetParentPeerBytes(peerIP string, bytes float64) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	if _, exists := labeledValues[HLNodeParentPeerBytesGauge]; !exists {
+		labeledValues[HLNodeParentPeerBytesGauge] = make(map[string]labeledValue)
+	}
+	labeledValues[HLNodeParentPeerBytesGauge][peerIP] = labeledValue{
+		value:  bytes,
+		labels: []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
+	}
+}
+
+func SetParentPeerTenure(seconds float64) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	currentValues[HLNodeParentPeerTenureGauge] = seconds
+}
+
+func IncrementParentPeerSwitches() {
+	HLNodeParentPeerSwitchesCounter.Add(sharedCtx, 1)
+}
+
+func SetParentPeerLatency(peerIP string, latencyMs float64) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	if _, exists := labeledValues[HLNodeParentPeerLatencyGauge]; !exists {
+		labeledValues[HLNodeParentPeerLatencyGauge] = make(map[string]labeledValue)
+	}
+	labeledValues[HLNodeParentPeerLatencyGauge][peerIP] = labeledValue{
+		value:  latencyMs,
+		labels: []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
+	}
+}

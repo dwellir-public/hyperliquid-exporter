@@ -131,6 +131,13 @@ var (
 	HLPeerProbeFailuresCounter api.Int64Counter
 	HLPeerMonitoredCountGauge  api.Float64ObservableGauge
 
+	// Parent peer metrics
+	HLNodeParentPeerGauge           api.Float64ObservableGauge
+	HLNodeParentPeerBytesGauge      api.Float64ObservableGauge
+	HLNodeParentPeerTenureGauge     api.Float64ObservableGauge
+	HLNodeParentPeerSwitchesCounter api.Int64Counter
+	HLNodeParentPeerLatencyGauge    api.Float64ObservableGauge
+
 	// monitor health metrics
 	HLConsensusMonitorLastProcessedGauge api.Int64ObservableGauge
 	HLConsensusMonitorLinesCounter       api.Int64Counter
@@ -939,6 +946,47 @@ func createInstruments() error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create peer monitored count gauge: %w", err)
+	}
+
+	// Parent peer metrics
+	HLNodeParentPeerGauge, err = meter.Float64ObservableGauge(
+		"hl_node_parent_peer",
+		api.WithDescription("Info-style gauge identifying the current parent peer (value=1)"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create parent peer gauge: %w", err)
+	}
+
+	HLNodeParentPeerBytesGauge, err = meter.Float64ObservableGauge(
+		"hl_node_parent_peer_bytes",
+		api.WithDescription("Inbound bytes from parent peer per interval (GB)"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create parent peer bytes gauge: %w", err)
+	}
+
+	HLNodeParentPeerTenureGauge, err = meter.Float64ObservableGauge(
+		"hl_node_parent_peer_tenure_seconds",
+		api.WithDescription("How long the current parent peer has held the role"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create parent peer tenure gauge: %w", err)
+	}
+
+	HLNodeParentPeerSwitchesCounter, err = meter.Int64Counter(
+		"hl_node_parent_peer_switches_total",
+		api.WithDescription("Total number of parent peer changes"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create parent peer switches counter: %w", err)
+	}
+
+	HLNodeParentPeerLatencyGauge, err = meter.Float64ObservableGauge(
+		"hl_node_parent_peer_latency_ms",
+		api.WithDescription("TCP connect latency to the parent peer in milliseconds"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create parent peer latency gauge: %w", err)
 	}
 
 	return nil

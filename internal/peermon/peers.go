@@ -23,10 +23,10 @@ const (
 
 // Peer represents a known peer with its last-seen timestamp.
 type Peer struct {
-	IP         string                   `json:"ip"`
-	Port       int                      `json:"port,omitempty"`
-	Directions map[PeerDirection]bool   `json:"directions"`
-	LastSeen   time.Time                `json:"last_seen"`
+	IP         string                 `json:"ip"`
+	Port       int                    `json:"port,omitempty"`
+	Directions map[PeerDirection]bool `json:"directions"`
+	LastSeen   time.Time              `json:"last_seen"`
 }
 
 // PeerSet is a thread-safe, bounded set of peers with JSON persistence.

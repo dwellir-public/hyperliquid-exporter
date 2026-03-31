@@ -28,6 +28,7 @@ type Monitor struct {
 	peers        *PeerSet
 	probeRunning atomic.Bool
 	probeWG      sync.WaitGroup
+	parentIP     atomic.Value // string: current parent peer IP
 	runProbe     func(context.Context, []Peer)
 }
 
@@ -38,6 +39,12 @@ func New(dataDir string) *Monitor {
 	}
 	m.runProbe = m.probeAll
 	return m
+}
+
+// SetParentPeer records the current parent peer IP for dedicated latency tracking.
+// Safe to call from any goroutine.
+func (m *Monitor) SetParentPeer(ip string) {
+	m.parentIP.Store(ip)
 }
 
 // Register adds a peer IP to the monitored set with a direction.
@@ -151,6 +158,9 @@ func (m *Monitor) probeAll(ctx context.Context, peers []Peer) {
 				for _, dir := range dirs {
 					metrics.SetPeerLatency(peer.IP, dir, latencyMs)
 					metrics.SetPeerReachable(peer.IP, dir, true)
+				}
+				if parentIP, ok := m.parentIP.Load().(string); ok && parentIP == peer.IP {
+					metrics.SetParentPeerLatency(peer.IP, latencyMs)
 				}
 				m.peers.UpdatePort(peer.IP, result.Port)
 			} else {

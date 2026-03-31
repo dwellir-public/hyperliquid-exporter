@@ -109,6 +109,7 @@ func Start(ctx context.Context, cfg config.Config) {
 
 	if registerPeer != nil {
 		go monitors.StartOutboundPeersMonitor(monitorCtx, &cfg, registerPeer)
+		go monitors.StartParentPeerMonitor(monitorCtx, &cfg, peerMon.SetParentPeer)
 	}
 
 	if cfg.EnableReplicaMetrics {

@@ -102,11 +102,13 @@ The `tcp_traffic` source is particularly important for non-validator nodes that 
 
 | Metric | Type | Labels | Description | Requirements |
 |--------|------|--------|-------------|--------------|
-| `hl_peer_latency_ms` | Gauge | `peer_ip` | TCP connect latency to peer in milliseconds | `--peer-latency` |
-| `hl_peer_reachable` | Gauge | `peer_ip` | Whether peer is reachable via TCP (1=yes, 0=no) | `--peer-latency` |
+| `hl_peer_latency_ms` | Gauge | `peer_ip`, `direction` | TCP connect latency to peer in milliseconds | `--peer-latency` |
+| `hl_peer_reachable` | Gauge | `peer_ip`, `direction` | Whether peer is reachable via TCP (1=yes, 0=no) | `--peer-latency` |
 | `hl_peer_probes_total` | Counter | `peer_ip` | Total probe attempts per peer IP | `--peer-latency` |
 | `hl_peer_probe_failures_total` | Counter | `peer_ip` | Total failed probes per peer IP | `--peer-latency` |
 | `hl_peer_monitored_count` | Gauge | - | Number of peers in the monitored set | `--peer-latency` |
+
+The `direction` label is one of `inbound`, `outbound`, or `unknown`. A peer seen in both directions gets two metric series with the same latency value (only one TCP probe is sent per IP). Direction is inferred from the discovery source: child peers and outgoing TCP traffic are `outbound`, incoming requests and inbound TCP traffic are `inbound`, and verified gossip RPCs where direction cannot be determined are `unknown`.
 
 ## Software Version Metrics
 

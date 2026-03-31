@@ -88,7 +88,7 @@ func Start(ctx context.Context, cfg config.Config) {
 	go monitors.StartValidatorLatencyMonitor(monitorCtx, &cfg, latencyErrCh)
 
 	// start peer latency monitor if enabled (before gossip monitors so it can receive registrations)
-	var registerPeer func(string)
+	var registerPeer func(string, peermon.PeerDirection)
 	var peerMon *peermon.Monitor
 	if cfg.EnablePeerLatency {
 		logger.InfoComponent("peer-latency", "Initializing peer latency monitor...")

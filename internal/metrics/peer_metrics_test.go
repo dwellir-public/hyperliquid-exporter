@@ -65,12 +65,12 @@ func TestRemoveChildPeerMetrics(t *testing.T) {
 func TestRemovePeerReachable(t *testing.T) {
 	setupPeerMetricsTest(t)
 
-	SetPeerReachable("1.2.3.4", true)
-	RemovePeerReachable("1.2.3.4")
+	SetPeerReachable("1.2.3.4", "outbound", true)
+	RemovePeerReachable("1.2.3.4", "outbound")
 
 	metricsMutex.RLock()
 	defer metricsMutex.RUnlock()
-	if _, exists := labeledValues[HLPeerReachableGauge]["1.2.3.4"]; exists {
+	if _, exists := labeledValues[HLPeerReachableGauge]["1.2.3.4:outbound"]; exists {
 		t.Fatalf("expected peer reachable entry to be removed")
 	}
 }
@@ -78,17 +78,21 @@ func TestRemovePeerReachable(t *testing.T) {
 func TestRemovePeerMetrics(t *testing.T) {
 	setupPeerMetricsTest(t)
 
-	SetPeerLatency("1.2.3.4", 123)
-	SetPeerReachable("1.2.3.4", false)
+	SetPeerLatency("1.2.3.4", "outbound", 123)
+	SetPeerReachable("1.2.3.4", "outbound", false)
+	SetPeerLatency("1.2.3.4", "inbound", 456)
 	RemovePeerMetrics("1.2.3.4")
 
 	metricsMutex.RLock()
 	defer metricsMutex.RUnlock()
 
-	if _, exists := labeledValues[HLPeerLatencyGauge]["1.2.3.4"]; exists {
-		t.Fatalf("expected peer latency entry to be removed")
+	if _, exists := labeledValues[HLPeerLatencyGauge]["1.2.3.4:outbound"]; exists {
+		t.Fatalf("expected peer latency outbound entry to be removed")
 	}
-	if _, exists := labeledValues[HLPeerReachableGauge]["1.2.3.4"]; exists {
+	if _, exists := labeledValues[HLPeerLatencyGauge]["1.2.3.4:inbound"]; exists {
+		t.Fatalf("expected peer latency inbound entry to be removed")
+	}
+	if _, exists := labeledValues[HLPeerReachableGauge]["1.2.3.4:outbound"]; exists {
 		t.Fatalf("expected peer reachable entry to be removed")
 	}
 }

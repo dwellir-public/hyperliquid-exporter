@@ -40,10 +40,10 @@ func New(dataDir string) *Monitor {
 	return m
 }
 
-// Register adds a peer IP to the monitored set.
+// Register adds a peer IP to the monitored set with a direction.
 // Safe to call from any goroutine — the underlying PeerSet is mutex-protected.
-func (m *Monitor) Register(ip string) {
-	evictedIP, evicted := m.peers.Register(ip)
+func (m *Monitor) Register(ip string, dir PeerDirection) {
+	evictedIP, evicted := m.peers.Register(ip, dir)
 	if evicted {
 		removePeerMetrics(evictedIP)
 	}
@@ -141,21 +141,40 @@ func (m *Monitor) probeAll(ctx context.Context, peers []Peer) {
 			probeCtx, cancel := context.WithTimeout(ctx, peerProbeTimeout)
 			defer cancel()
 
+			dirs := directionsOrUnknown(peer.Directions)
+
 			metrics.IncrementPeerProbes(peer.IP)
 			result := Probe(probeCtx, peer.IP, peer.Port)
 
 			if result.Reachable {
 				latencyMs := float64(result.Latency.Milliseconds())
-				metrics.SetPeerLatency(peer.IP, latencyMs)
-				metrics.SetPeerReachable(peer.IP, true)
+				for _, dir := range dirs {
+					metrics.SetPeerLatency(peer.IP, dir, latencyMs)
+					metrics.SetPeerReachable(peer.IP, dir, true)
+				}
 				m.peers.UpdatePort(peer.IP, result.Port)
 			} else {
-				metrics.RemovePeerLatency(peer.IP)
-				metrics.SetPeerReachable(peer.IP, false)
+				for _, dir := range dirs {
+					metrics.RemovePeerLatency(peer.IP, dir)
+					metrics.SetPeerReachable(peer.IP, dir, false)
+				}
 				metrics.IncrementPeerProbeFailures(peer.IP)
 			}
 		}(p)
 	}
 
 	wg.Wait()
+}
+
+// directionsOrUnknown returns the peer's directions as strings,
+// falling back to ["unknown"] if none are set.
+func directionsOrUnknown(dirs map[PeerDirection]bool) []string {
+	if len(dirs) == 0 {
+		return []string{string(Unknown)}
+	}
+	out := make([]string, 0, len(dirs))
+	for d := range dirs {
+		out = append(out, string(d))
+	}
+	return out
 }

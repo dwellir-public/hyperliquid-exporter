@@ -2,6 +2,17 @@
 
 All notable changes to the Hyperliquid Exporter will be documented in this file.
 
+## [2.1.3]
+
+### Added
+- Direction labeling for peer latency metrics: `hl_peer_latency_ms` and `hl_peer_reachable` now include a `direction` label (`inbound`, `outbound`, or `unknown`)
+  - A peer seen in both directions gets two Prometheus series with the same latency value (one TCP probe per IP)
+  - Direction is inferred from the discovery source: child peers and outgoing TCP traffic are outbound, incoming requests and inbound TCP traffic are inbound
+
+### Changed
+- Peer set capacity increased from 100 to 128
+- `peermon.Register` now accepts a `PeerDirection` parameter; `Peer` struct tracks a set of observed directions
+
 ## [2.1.2]
 
 ### Added

@@ -2,6 +2,15 @@
 
 All notable changes to the Hyperliquid Exporter will be documented in this file.
 
+## [2.1.2]
+
+### Added
+- Outbound peer discovery from `tcp_traffic` logs: non-validator nodes with no inbound connections now automatically discover peers for latency monitoring
+- New outbound peers monitor extracts peer IPs from the node's TCP traffic data, logging each discovered peer on first sight
+
+### Changed
+- `peermon.Register` is now a direct mutex-protected call instead of a buffered channel send, removing the 256-entry buffer limit
+
 ## [2.1.1]
 
 ### Changed

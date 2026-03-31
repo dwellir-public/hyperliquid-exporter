@@ -92,7 +92,13 @@ The `incoming_*` metrics are particularly useful for downstream (non-validator) 
 
 ## Peer Latency Metrics
 
-Requires `--peer-latency` flag. Probes all known peers via TCP connect (ports 4000-4010) once per minute. Peers are discovered from gossip logs and persisted to disk across restarts.
+Requires `--peer-latency` flag. Probes all known peers via TCP connect (ports 4000-4010) once per minute. Peers are discovered from multiple sources and persisted to disk across restarts:
+
+- **gossip_rpc logs**: child peer status and incoming request events (inbound connections)
+- **gossip_connections logs**: stream connection and verification events (inbound connections)
+- **tcp_traffic logs**: all IPs the node exchanges TCP data with (outbound and inbound)
+
+The `tcp_traffic` source is particularly important for non-validator nodes that have no inbound peer connections (ports 4001/4002 not open) -- without it, the peer set would remain empty since all gossip log events are inbound-only.
 
 | Metric | Type | Labels | Description | Requirements |
 |--------|------|--------|-------------|--------------|

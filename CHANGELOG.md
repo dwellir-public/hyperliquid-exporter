@@ -2,6 +2,18 @@
 
 All notable changes to the Hyperliquid Exporter will be documented in this file.
 
+## [2.1.4]
+
+### Added
+- Parent peer identification: new monitor that analyzes `tcp_traffic` byte volumes to identify the node's primary upstream peer (the one delivering all block data)
+- New metrics (all require `--peer-latency`):
+  - `hl_node_parent_peer` — info gauge identifying the current parent peer IP
+  - `hl_node_parent_peer_bytes` — inbound data volume from the parent peer per interval (GB)
+  - `hl_node_parent_peer_tenure_seconds` — how long the current parent has held the role
+  - `hl_node_parent_peer_switches_total` — counter for parent peer changes
+  - `hl_node_parent_peer_latency_ms` — dedicated TCP probe latency for the parent peer
+- Warning log when parent peer selection is ambiguous (runner-up has >10% of the top peer's bytes)
+
 ## [2.1.3]
 
 ### Added

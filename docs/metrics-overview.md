@@ -1,6 +1,6 @@
 ---
-last_edited: 2026-03-27
-version: 2.0.0
+last_edited: 2026-03-31
+version: 2.1.4
 commit: 5bfc9e9
 ---
 
@@ -109,6 +109,20 @@ The `tcp_traffic` source is particularly important for non-validator nodes that 
 | `hl_peer_monitored_count` | Gauge | - | Number of peers in the monitored set | `--peer-latency` |
 
 The `direction` label is one of `inbound`, `outbound`, or `unknown`. A peer seen in both directions gets two metric series with the same latency value (only one TCP probe is sent per IP). Direction is inferred from the discovery source: child peers and outgoing TCP traffic are `outbound`, incoming requests and inbound TCP traffic are `inbound`, and verified gossip RPCs where direction cannot be determined are `unknown`.
+
+## Parent Peer Metrics
+
+Requires `--peer-latency` flag. Identifies the node's primary upstream peer (the one delivering all block data) by analyzing `tcp_traffic` byte volumes. The peer with the highest inbound bytes is the parent — in practice, the signal is ~7 orders of magnitude above noise.
+
+| Metric | Type | Labels | Description | Requirements |
+|--------|------|--------|-------------|--------------|
+| `hl_node_parent_peer` | Gauge | `peer_ip` | Info-style gauge identifying the current parent peer (value=1) | `--peer-latency` |
+| `hl_node_parent_peer_bytes` | Gauge | `peer_ip` | Inbound bytes from parent peer per interval (GB) | `--peer-latency` |
+| `hl_node_parent_peer_tenure_seconds` | Gauge | - | How long the current parent peer has held the role | `--peer-latency` |
+| `hl_node_parent_peer_switches_total` | Counter | - | Total number of parent peer changes | `--peer-latency` |
+| `hl_node_parent_peer_latency_ms` | Gauge | `peer_ip` | TCP connect latency to the parent peer in milliseconds | `--peer-latency` |
+
+When the parent changes, the old peer's labeled metrics are removed and the switch counter is incremented. A warning is logged if the runner-up peer has >10% of the top peer's inbound bytes, indicating potential ambiguity.
 
 ## Software Version Metrics
 

@@ -94,7 +94,11 @@ func (m *GossipMonitor) monitorGossipLogs(ctx context.Context, errCh chan<- erro
 				continue
 			}
 
-			if filePath != m.lastFile && filePath != "" {
+			if filePath == "" {
+				continue
+			}
+
+			if filePath != m.lastFile {
 				logger.InfoComponent("gossip", "Switching to new gossip file: %s", filePath)
 				m.lastFile = filePath
 				m.lastOffset = 0

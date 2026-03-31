@@ -1279,7 +1279,9 @@ func IncrementVerifications(peerIP string) {
 
 // Peer latency setters
 
-func SetPeerLatency(peerIP string, latencyMs float64) {
+func SetPeerLatency(peerIP, direction string, latencyMs float64) {
+	key := peerIP + ":" + direction
+
 	metricsMutex.Lock()
 	defer metricsMutex.Unlock()
 
@@ -1287,13 +1289,17 @@ func SetPeerLatency(peerIP string, latencyMs float64) {
 		labeledValues[HLPeerLatencyGauge] = make(map[string]labeledValue)
 	}
 
-	labeledValues[HLPeerLatencyGauge][peerIP] = labeledValue{
-		value:  latencyMs,
-		labels: []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
+	labeledValues[HLPeerLatencyGauge][key] = labeledValue{
+		value: latencyMs,
+		labels: []attribute.KeyValue{
+			attribute.String("peer_ip", peerIP),
+			attribute.String("direction", direction),
+		},
 	}
 }
 
-func SetPeerReachable(peerIP string, reachable bool) {
+func SetPeerReachable(peerIP, direction string, reachable bool) {
+	key := peerIP + ":" + direction
 	val := float64(0)
 	if reachable {
 		val = 1
@@ -1306,9 +1312,12 @@ func SetPeerReachable(peerIP string, reachable bool) {
 		labeledValues[HLPeerReachableGauge] = make(map[string]labeledValue)
 	}
 
-	labeledValues[HLPeerReachableGauge][peerIP] = labeledValue{
-		value:  val,
-		labels: []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
+	labeledValues[HLPeerReachableGauge][key] = labeledValue{
+		value: val,
+		labels: []attribute.KeyValue{
+			attribute.String("peer_ip", peerIP),
+			attribute.String("direction", direction),
+		},
 	}
 }
 
@@ -1322,25 +1331,46 @@ func IncrementPeerProbeFailures(peerIP string) {
 		api.WithAttributes(attribute.String("peer_ip", peerIP)))
 }
 
-func RemovePeerLatency(peerIP string) {
+func RemovePeerLatency(peerIP, direction string) {
+	key := peerIP + ":" + direction
+
 	metricsMutex.Lock()
 	defer metricsMutex.Unlock()
 	if m, exists := labeledValues[HLPeerLatencyGauge]; exists {
-		delete(m, peerIP)
+		delete(m, key)
 	}
 }
 
-func RemovePeerReachable(peerIP string) {
+func RemovePeerReachable(peerIP, direction string) {
+	key := peerIP + ":" + direction
+
 	metricsMutex.Lock()
 	defer metricsMutex.Unlock()
 	if m, exists := labeledValues[HLPeerReachableGauge]; exists {
-		delete(m, peerIP)
+		delete(m, key)
 	}
 }
 
+// RemovePeerDirectionMetrics removes latency and reachable entries for one ip+direction.
+func RemovePeerDirectionMetrics(peerIP, direction string) {
+	RemovePeerLatency(peerIP, direction)
+	RemovePeerReachable(peerIP, direction)
+}
+
+// RemovePeerMetrics removes all direction entries for a peer IP.
 func RemovePeerMetrics(peerIP string) {
-	RemovePeerLatency(peerIP)
-	RemovePeerReachable(peerIP)
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+
+	for _, gauge := range []api.Observable{HLPeerLatencyGauge, HLPeerReachableGauge} {
+		if m, exists := labeledValues[gauge]; exists {
+			for key := range m {
+				if len(key) > len(peerIP) && key[:len(peerIP)+1] == peerIP+":" {
+					delete(m, key)
+				}
+			}
+		}
+	}
 }
 
 func SetPeerMonitoredCount(count int64) {

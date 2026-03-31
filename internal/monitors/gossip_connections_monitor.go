@@ -9,9 +9,12 @@ import (
 	"path/filepath"
 	"time"
 
+	"strings"
+
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/peermon"
 )
 
 type GossipConnectionsMonitor struct {
@@ -19,10 +22,10 @@ type GossipConnectionsMonitor struct {
 	dir          string
 	lastFile     string
 	lastOffset   int64
-	registerPeer func(string)
+	registerPeer func(string, peermon.PeerDirection)
 }
 
-func NewGossipConnectionsMonitor(cfg *config.Config, registerPeer func(string)) *GossipConnectionsMonitor {
+func NewGossipConnectionsMonitor(cfg *config.Config, registerPeer func(string, peermon.PeerDirection)) *GossipConnectionsMonitor {
 	return &GossipConnectionsMonitor{
 		config:       cfg,
 		dir:          filepath.Join(cfg.NodeHome, "data", "node_logs", "gossip_connections", "hourly"),
@@ -30,7 +33,7 @@ func NewGossipConnectionsMonitor(cfg *config.Config, registerPeer func(string)) 
 	}
 }
 
-func StartGossipConnectionsMonitor(ctx context.Context, cfg *config.Config, errCh chan<- error, registerPeer func(string)) {
+func StartGossipConnectionsMonitor(ctx context.Context, cfg *config.Config, errCh chan<- error, registerPeer func(string, peermon.PeerDirection)) {
 	m := NewGossipConnectionsMonitor(cfg, registerPeer)
 
 	if _, err := os.Stat(m.dir); os.IsNotExist(err) {
@@ -141,7 +144,7 @@ func (m *GossipConnectionsMonitor) processFile(filePath string, offset int64) (i
 			}
 			metrics.IncrementStreamConnections(peerIP, connType)
 			if m.registerPeer != nil {
-				m.registerPeer(peerIP)
+				m.registerPeer(peerIP, connTypeToDirection(connType))
 			}
 
 		case "verified gossip rpc":
@@ -153,7 +156,7 @@ func (m *GossipConnectionsMonitor) processFile(filePath string, offset int64) (i
 			}
 			metrics.IncrementVerifications(peer.IP)
 			if m.registerPeer != nil {
-				m.registerPeer(peer.IP)
+				m.registerPeer(peer.IP, peermon.Unknown)
 			}
 		}
 	})
@@ -162,4 +165,15 @@ func (m *GossipConnectionsMonitor) processFile(filePath string, offset int64) (i
 	}
 
 	return newOffset, nil
+}
+
+func connTypeToDirection(connType string) peermon.PeerDirection {
+	switch strings.ToLower(connType) {
+	case "inbound":
+		return peermon.Inbound
+	case "outbound":
+		return peermon.Outbound
+	default:
+		return peermon.Unknown
+	}
 }

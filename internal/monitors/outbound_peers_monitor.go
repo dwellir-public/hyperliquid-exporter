@@ -9,17 +9,18 @@ import (
 
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/peermon"
 )
 
 type OutboundPeersMonitor struct {
 	dir          string
 	lastFile     string
 	lastOffset   int64
-	registerPeer func(string)
+	registerPeer func(string, peermon.PeerDirection)
 	seen         map[string]struct{}
 }
 
-func NewOutboundPeersMonitor(cfg *config.Config, registerPeer func(string)) *OutboundPeersMonitor {
+func NewOutboundPeersMonitor(cfg *config.Config, registerPeer func(string, peermon.PeerDirection)) *OutboundPeersMonitor {
 	return &OutboundPeersMonitor{
 		dir:          filepath.Join(cfg.NodeHome, "data", "tcp_traffic", "hourly"),
 		registerPeer: registerPeer,
@@ -27,7 +28,7 @@ func NewOutboundPeersMonitor(cfg *config.Config, registerPeer func(string)) *Out
 	}
 }
 
-func StartOutboundPeersMonitor(ctx context.Context, cfg *config.Config, registerPeer func(string)) {
+func StartOutboundPeersMonitor(ctx context.Context, cfg *config.Config, registerPeer func(string, peermon.PeerDirection)) {
 	m := NewOutboundPeersMonitor(cfg, registerPeer)
 
 	if _, err := os.Stat(m.dir); os.IsNotExist(err) {
@@ -81,10 +82,15 @@ func (m *OutboundPeersMonitor) poll() {
 	}
 }
 
-// processFile reads tcp_traffic lines and extracts peer IPs.
+type peerEntry struct {
+	ip  string
+	dir peermon.PeerDirection
+}
+
+// processFile reads tcp_traffic lines and extracts peer IPs with direction.
 // Format: ["timestamp",[[["In"|"Out","IP",port],bytes], ...]]
 func (m *OutboundPeersMonitor) processFile(filePath string, offset int64) (int64, error) {
-	batch := make(map[string]struct{})
+	batch := make(map[peerEntry]struct{})
 
 	newOffset, err := readCommittedLines(filePath, offset, func(line []byte) {
 		var entry [2]json.RawMessage
@@ -107,29 +113,44 @@ func (m *OutboundPeersMonitor) processFile(filePath string, offset int64) (int64
 			if err := json.Unmarshal(pair[0], &key); err != nil {
 				continue
 			}
-			var ip string
+			var dirStr, ip string
+			if err := json.Unmarshal(key[0], &dirStr); err != nil {
+				continue
+			}
 			if err := json.Unmarshal(key[1], &ip); err != nil {
 				continue
 			}
-			batch[ip] = struct{}{}
+			dir := trafficDirection(dirStr)
+			batch[peerEntry{ip, dir}] = struct{}{}
 		}
 	})
 	if err != nil {
 		return offset, err
 	}
 
-	for ip := range batch {
-		m.register(ip)
+	for pe := range batch {
+		m.register(pe.ip, pe.dir)
 	}
 
 	m.lastOffset = newOffset
 	return newOffset, nil
 }
 
-func (m *OutboundPeersMonitor) register(ip string) {
+func (m *OutboundPeersMonitor) register(ip string, dir peermon.PeerDirection) {
 	if _, ok := m.seen[ip]; !ok {
 		m.seen[ip] = struct{}{}
 		logger.InfoComponent("gossip", "Discovered peer %s from tcp_traffic", ip)
 	}
-	m.registerPeer(ip)
+	m.registerPeer(ip, dir)
+}
+
+func trafficDirection(s string) peermon.PeerDirection {
+	switch s {
+	case "Out":
+		return peermon.Outbound
+	case "In":
+		return peermon.Inbound
+	default:
+		return peermon.Unknown
+	}
 }

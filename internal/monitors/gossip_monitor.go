@@ -12,6 +12,7 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/peermon"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/utils"
 )
 
@@ -28,7 +29,7 @@ type GossipMonitor struct {
 	lastOffset      int64
 	peerLastSeen    map[string]time.Time // tier 1: track active incoming peers
 	knownChildPeers map[string]childPeerState
-	registerPeer    func(string)
+	registerPeer    func(string, peermon.PeerDirection)
 }
 
 type PeerInfo struct {
@@ -45,7 +46,7 @@ type childPeerState struct {
 	verified bool
 }
 
-func NewGossipMonitor(cfg *config.Config, registerPeer func(string)) *GossipMonitor {
+func NewGossipMonitor(cfg *config.Config, registerPeer func(string, peermon.PeerDirection)) *GossipMonitor {
 	return &GossipMonitor{
 		config:          cfg,
 		gossipDir:       filepath.Join(cfg.NodeHome, "data", "node_logs", "gossip_rpc", "hourly"),
@@ -55,7 +56,7 @@ func NewGossipMonitor(cfg *config.Config, registerPeer func(string)) *GossipMoni
 	}
 }
 
-func StartGossipMonitor(ctx context.Context, cfg *config.Config, errCh chan<- error, registerPeer func(string)) {
+func StartGossipMonitor(ctx context.Context, cfg *config.Config, errCh chan<- error, registerPeer func(string, peermon.PeerDirection)) {
 	m := NewGossipMonitor(cfg, registerPeer)
 
 	if _, err := os.Stat(m.gossipDir); os.IsNotExist(err) {
@@ -231,7 +232,7 @@ func (m *GossipMonitor) processChildPeers(raw json.RawMessage, currentPeers map[
 		metrics.SetChildPeerConnected(info.IP, status.Verified, true)
 		metrics.SetChildPeerConnections(info.IP, status.ConnectionCount)
 		if m.registerPeer != nil {
-			m.registerPeer(info.IP)
+			m.registerPeer(info.IP, peermon.Outbound)
 		}
 		currentPeers[info.IP] = status
 	}
@@ -258,7 +259,7 @@ func (m *GossipMonitor) processIncomingRequest(eventData []json.RawMessage, entr
 	metrics.IncrementIncomingRequests(peerIP)
 	metrics.SetIncomingPeerLastSeen(peerIP, float64(entryTime.Unix()))
 	if m.registerPeer != nil {
-		m.registerPeer(peerIP)
+		m.registerPeer(peerIP, peermon.Inbound)
 	}
 	m.peerLastSeen[peerIP] = entryTime
 }

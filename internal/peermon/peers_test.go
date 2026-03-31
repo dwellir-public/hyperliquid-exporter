@@ -15,8 +15,8 @@ import (
 func TestPeerSet_Register(t *testing.T) {
 	ps := NewPeerSet(t.TempDir())
 
-	_, _ = ps.Register("10.0.0.1")
-	_, _ = ps.Register("10.0.0.2")
+	_, _ = ps.Register("10.0.0.1", Outbound)
+	_, _ = ps.Register("10.0.0.2", Outbound)
 
 	assert.Equal(t, 2, ps.Len())
 	assert.True(t, ps.Dirty())
@@ -26,26 +26,26 @@ func TestPeerSet_RegisterRejectsInvalidIP(t *testing.T) {
 	ps := NewPeerSet(t.TempDir())
 
 	for _, bad := range []string{"", "not-an-ip", "10.0.0.1:4000", "10.0.0.1:port", "abc:def"} {
-		_, evicted := ps.Register(bad)
+		_, evicted := ps.Register(bad, Outbound)
 		assert.False(t, evicted, "should not evict for invalid IP %q", bad)
 	}
 	assert.Equal(t, 0, ps.Len())
 
 	// Valid IPs should still work
-	_, _ = ps.Register("10.0.0.1")
-	_, _ = ps.Register("::1")
+	_, _ = ps.Register("10.0.0.1", Outbound)
+	_, _ = ps.Register("::1", Outbound)
 	assert.Equal(t, 2, ps.Len())
 }
 
 func TestPeerSet_RegisterUpdatesLastSeen(t *testing.T) {
 	ps := NewPeerSet(t.TempDir())
 
-	_, _ = ps.Register("10.0.0.1")
+	_, _ = ps.Register("10.0.0.1", Outbound)
 	peers := ps.All()
 	first := peers[0].LastSeen
 
 	time.Sleep(time.Millisecond)
-	_, _ = ps.Register("10.0.0.1")
+	_, _ = ps.Register("10.0.0.1", Outbound)
 	peers = ps.All()
 	assert.True(t, peers[0].LastSeen.After(first))
 	assert.Equal(t, 1, ps.Len())
@@ -59,14 +59,14 @@ func TestPeerSet_EvictionOrder(t *testing.T) {
 	for i := 1; i <= maxPeers; i++ {
 		ip := "10.0.0." + fmt.Sprint(i)
 		ps.mu.Lock()
-		ps.peers[ip] = &Peer{IP: ip, LastSeen: base.Add(time.Duration(i) * time.Second)}
+		ps.peers[ip] = &Peer{IP: ip, Directions: map[PeerDirection]bool{}, LastSeen: base.Add(time.Duration(i) * time.Second)}
 		ps.dirty = true
 		ps.mu.Unlock()
 	}
 	assert.Equal(t, maxPeers, ps.Len())
 
 	// Adding one more should evict 10.0.0.1 (oldest: base+1s)
-	evictedIP, evicted := ps.Register("10.0.0.200")
+	evictedIP, evicted := ps.Register("10.0.0.200", Outbound)
 	assert.Equal(t, maxPeers, ps.Len())
 	assert.True(t, evicted)
 	assert.Equal(t, "10.0.0.1", evictedIP)
@@ -84,8 +84,8 @@ func TestPeerSet_LoadSaveRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 
 	ps1 := NewPeerSet(dir)
-	_, _ = ps1.Register("10.0.0.1")
-	_, _ = ps1.Register("10.0.0.2")
+	_, _ = ps1.Register("10.0.0.1", Outbound)
+	_, _ = ps1.Register("10.0.0.2", Outbound)
 	ps1.UpdatePort("10.0.0.2", 4005)
 	require.NoError(t, ps1.Save())
 
@@ -140,7 +140,7 @@ func TestPeerSet_SaveNoOpWhenClean(t *testing.T) {
 
 func TestPeerSet_FinishSaveClearsDirtyWithoutConcurrentMutation(t *testing.T) {
 	ps := NewPeerSet(t.TempDir())
-	_, _ = ps.Register("10.0.0.1")
+	_, _ = ps.Register("10.0.0.1", Outbound)
 
 	_, gen, ok := ps.snapshotForSave()
 	require.True(t, ok)
@@ -151,12 +151,12 @@ func TestPeerSet_FinishSaveClearsDirtyWithoutConcurrentMutation(t *testing.T) {
 
 func TestPeerSet_FinishSaveKeepsDirtyAfterConcurrentMutation(t *testing.T) {
 	ps := NewPeerSet(t.TempDir())
-	_, _ = ps.Register("10.0.0.1")
+	_, _ = ps.Register("10.0.0.1", Outbound)
 
 	_, gen, ok := ps.snapshotForSave()
 	require.True(t, ok)
 
-	_, _ = ps.Register("10.0.0.2")
+	_, _ = ps.Register("10.0.0.2", Outbound)
 	ps.finishSave(gen)
 
 	assert.True(t, ps.Dirty())
@@ -165,7 +165,7 @@ func TestPeerSet_FinishSaveKeepsDirtyAfterConcurrentMutation(t *testing.T) {
 
 func TestPeerSet_UpdatePortMarksDirtyOnlyOnChange(t *testing.T) {
 	ps := NewPeerSet(t.TempDir())
-	_, _ = ps.Register("10.0.0.1")
+	_, _ = ps.Register("10.0.0.1", Outbound)
 	require.NoError(t, ps.Save())
 	assert.False(t, ps.Dirty())
 
@@ -187,7 +187,7 @@ func TestPeerSet_ConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			_, _ = ps.Register("10.0.0." + fmt.Sprint(n%10+1))
+			_, _ = ps.Register("10.0.0."+fmt.Sprint(n%10+1), Outbound)
 			_ = ps.All()
 			_ = ps.Len()
 		}(i)

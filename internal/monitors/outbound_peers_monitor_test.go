@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/peermon"
 )
 
 func TestOutboundPeersMonitor_ProcessFile(t *testing.T) {
@@ -18,7 +19,7 @@ func TestOutboundPeersMonitor_ProcessFile(t *testing.T) {
 
 	var mu sync.Mutex
 	var registered []string
-	register := func(ip string) {
+	register := func(ip string, _ peermon.PeerDirection) {
 		mu.Lock()
 		registered = append(registered, ip)
 		mu.Unlock()
@@ -45,8 +46,8 @@ func TestOutboundPeersMonitor_ProcessFile(t *testing.T) {
 	sort.Strings(registered)
 	mu.Unlock()
 
-	// deduped per poll: 3 unique IPs
-	assert.Len(t, registered, 3)
+	// deduped per poll: 3 unique IPs, but 192.168.108.167 appears with both In and Out
+	assert.Len(t, registered, 4)
 	assert.Contains(t, registered, "192.168.108.167")
 	assert.Contains(t, registered, "10.0.0.1")
 	assert.Contains(t, registered, "10.0.0.2")
@@ -59,12 +60,12 @@ func TestOutboundPeersMonitor_LogsNewPeers(t *testing.T) {
 	var peers []string
 	m := NewOutboundPeersMonitor(
 		&config.Config{NodeHome: t.TempDir()},
-		func(ip string) { peers = append(peers, ip) },
+		func(ip string, _ peermon.PeerDirection) { peers = append(peers, ip) },
 	)
 
-	m.register("10.0.0.1")
-	m.register("10.0.0.1") // duplicate
-	m.register("10.0.0.2")
+	m.register("10.0.0.1", peermon.Outbound)
+	m.register("10.0.0.1", peermon.Outbound) // duplicate
+	m.register("10.0.0.2", peermon.Inbound)
 
 	// all three calls forwarded to registerPeer
 	assert.Equal(t, []string{"10.0.0.1", "10.0.0.1", "10.0.0.2"}, peers)
@@ -78,7 +79,7 @@ func TestOutboundPeersMonitor_MalformedLines(t *testing.T) {
 	var registered []string
 	m := NewOutboundPeersMonitor(
 		&config.Config{NodeHome: t.TempDir()},
-		func(ip string) { registered = append(registered, ip) },
+		func(ip string, _ peermon.PeerDirection) { registered = append(registered, ip) },
 	)
 
 	dateDir := filepath.Join(m.dir, "20260331")
@@ -102,7 +103,7 @@ func TestOutboundPeersMonitor_EmptyDir(t *testing.T) {
 
 	m := NewOutboundPeersMonitor(
 		&config.Config{NodeHome: t.TempDir()},
-		func(string) {},
+		func(string, peermon.PeerDirection) {},
 	)
 
 	// dir doesn't exist yet

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/peermon"
 )
 
 func newTestGossipMonitor(t *testing.T) *GossipMonitor {
@@ -64,7 +65,7 @@ func TestProcessGossipFile_IncomingRequestRegistersPeer(t *testing.T) {
 		seen []string
 	)
 
-	m := NewGossipMonitor(&config.Config{NodeHome: t.TempDir()}, func(ip string) {
+	m := NewGossipMonitor(&config.Config{NodeHome: t.TempDir()}, func(ip string, _ peermon.PeerDirection) {
 		mu.Lock()
 		defer mu.Unlock()
 		seen = append(seen, ip)

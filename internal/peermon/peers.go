@@ -12,11 +12,21 @@ import (
 
 const maxPeers = 100
 
+// PeerDirection indicates how this node relates to a peer.
+type PeerDirection string
+
+const (
+	Inbound  PeerDirection = "inbound"
+	Outbound PeerDirection = "outbound"
+	Unknown  PeerDirection = "unknown"
+)
+
 // Peer represents a known peer with its last-seen timestamp.
 type Peer struct {
-	IP       string    `json:"ip"`
-	Port     int       `json:"port,omitempty"`
-	LastSeen time.Time `json:"last_seen"`
+	IP         string                   `json:"ip"`
+	Port       int                      `json:"port,omitempty"`
+	Directions map[PeerDirection]bool   `json:"directions"`
+	LastSeen   time.Time                `json:"last_seen"`
 }
 
 // PeerSet is a thread-safe, bounded set of peers with JSON persistence.
@@ -39,7 +49,7 @@ func NewPeerSet(dir string) *PeerSet {
 // Register adds or updates a peer. If at capacity and the IP is new,
 // the peer with the oldest LastSeen is evicted and returned.
 // Returns ("", false) silently for invalid IPs (not a bare IPv4/IPv6 address).
-func (ps *PeerSet) Register(ip string) (string, bool) {
+func (ps *PeerSet) Register(ip string, dir PeerDirection) (string, bool) {
 	if net.ParseIP(ip) == nil {
 		return "", false
 	}
@@ -49,6 +59,9 @@ func (ps *PeerSet) Register(ip string) (string, bool) {
 
 	if p, exists := ps.peers[ip]; exists {
 		p.LastSeen = time.Now()
+		if dir != Unknown {
+			p.Directions[dir] = true
+		}
 		ps.gen++
 		ps.dirty = true
 		return "", false
@@ -59,7 +72,11 @@ func (ps *PeerSet) Register(ip string) (string, bool) {
 		evictedIP = ps.evictOldest()
 	}
 
-	ps.peers[ip] = &Peer{IP: ip, LastSeen: time.Now()}
+	dirs := map[PeerDirection]bool{}
+	if dir != Unknown {
+		dirs[dir] = true
+	}
+	ps.peers[ip] = &Peer{IP: ip, Directions: dirs, LastSeen: time.Now()}
 	ps.gen++
 	ps.dirty = true
 	return evictedIP, evictedIP != ""
@@ -135,6 +152,9 @@ func (ps *PeerSet) Load() error {
 		}
 		if len(ps.peers) >= maxPeers {
 			break
+		}
+		if p.Directions == nil {
+			p.Directions = map[PeerDirection]bool{}
 		}
 		ps.peers[p.IP] = &p
 	}

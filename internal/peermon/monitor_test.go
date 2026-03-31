@@ -33,8 +33,8 @@ func TestMonitor_Register(t *testing.T) {
 	initTestMetrics(t)
 	m := New(t.TempDir())
 
-	m.Register("10.0.0.1")
-	m.Register("10.0.0.2")
+	m.Register("10.0.0.1", Outbound)
+	m.Register("10.0.0.2", Outbound)
 
 	assert.Equal(t, 2, m.peers.Len())
 }
@@ -45,7 +45,7 @@ func TestMonitor_RegisterHighVolume(t *testing.T) {
 
 	// simulate thousands of registrations for 5 unique IPs (like tcp_traffic startup)
 	for i := 0; i < 5000; i++ {
-		m.Register("10.0.0." + strconv.Itoa(i%5+1))
+		m.Register("10.0.0."+strconv.Itoa(i%5+1), Outbound)
 	}
 
 	// all 5 unique IPs registered, no drops
@@ -63,7 +63,7 @@ func TestMonitor_StartAndShutdown(t *testing.T) {
 	go m.Start(ctx, errCh)
 
 	// Register a peer
-	m.Register("127.0.0.1")
+	m.Register("127.0.0.1", Outbound)
 	time.Sleep(50 * time.Millisecond)
 
 	cancel()
@@ -80,7 +80,7 @@ func TestMonitor_ProbeAllWithPeers(t *testing.T) {
 	m := New(t.TempDir())
 
 	// Register an unreachable peer
-	_, _ = m.peers.Register("127.0.0.254")
+	_, _ = m.peers.Register("127.0.0.254", Outbound)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -92,7 +92,7 @@ func TestMonitor_ProbeAllWithPeers(t *testing.T) {
 func TestMonitor_StartProbeCycleSkipsWhileRunning(t *testing.T) {
 	initTestMetrics(t)
 	m := New(t.TempDir())
-	_, _ = m.peers.Register("10.0.0.1")
+	_, _ = m.peers.Register("10.0.0.1", Outbound)
 
 	startedCh := make(chan struct{})
 	release := make(chan struct{})
@@ -117,7 +117,7 @@ func TestMonitor_StartProbeCycleSkipsWhileRunning(t *testing.T) {
 func TestMonitor_RegisterWhileProbeRunning(t *testing.T) {
 	initTestMetrics(t)
 	m := New(t.TempDir())
-	_, _ = m.peers.Register("10.0.0.1")
+	_, _ = m.peers.Register("10.0.0.1", Outbound)
 
 	startedCh := make(chan struct{})
 	release := make(chan struct{})
@@ -131,8 +131,8 @@ func TestMonitor_RegisterWhileProbeRunning(t *testing.T) {
 	require.False(t, skipped)
 	<-startedCh
 
-	m.Register("10.0.0.2")
-	m.Register("10.0.0.3")
+	m.Register("10.0.0.2", Outbound)
+	m.Register("10.0.0.3", Outbound)
 
 	assert.Equal(t, 3, m.peers.Len())
 
@@ -158,7 +158,7 @@ func TestMonitor_ProbeAllUsesPerPeerDeadline(t *testing.T) {
 	}
 
 	start := time.Now()
-	m.probeAll(context.Background(), []Peer{{IP: "10.0.0.1"}})
+	m.probeAll(context.Background(), []Peer{{IP: "10.0.0.1", Directions: map[PeerDirection]bool{}}})
 
 	assert.Less(t, time.Since(start), 200*time.Millisecond)
 }
@@ -171,7 +171,7 @@ func TestMonitor_RegisterEvictsOldest(t *testing.T) {
 	for i := 1; i <= maxPeers; i++ {
 		ip := "10.0.0." + strconv.Itoa(i)
 		m.peers.mu.Lock()
-		m.peers.peers[ip] = &Peer{IP: ip, LastSeen: base.Add(time.Duration(i) * time.Second)}
+		m.peers.peers[ip] = &Peer{IP: ip, Directions: map[PeerDirection]bool{}, LastSeen: base.Add(time.Duration(i) * time.Second)}
 		m.peers.mu.Unlock()
 	}
 
@@ -191,7 +191,7 @@ func TestMonitor_RegisterEvictsOldest(t *testing.T) {
 		count = v
 	}
 
-	m.Register("10.0.0.200")
+	m.Register("10.0.0.200", Outbound)
 
 	assert.Equal(t, "10.0.0.1", removed)
 	assert.Equal(t, int64(maxPeers), count)
@@ -203,8 +203,8 @@ func TestMonitor_StartSyncsLoadedPeerCount(t *testing.T) {
 	dir := t.TempDir()
 
 	ps := NewPeerSet(dir)
-	_, _ = ps.Register("10.0.0.1")
-	_, _ = ps.Register("10.0.0.2")
+	_, _ = ps.Register("10.0.0.1", Outbound)
+	_, _ = ps.Register("10.0.0.2", Outbound)
 	require.NoError(t, ps.Save())
 
 	restoreCount := setPeerCount

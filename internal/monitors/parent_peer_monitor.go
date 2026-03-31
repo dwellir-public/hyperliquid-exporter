@@ -184,6 +184,6 @@ func (m *ParentPeerMonitor) updateParent(ip string, bytes float64) {
 	}
 
 	metrics.SetParentPeer(ip)
-	metrics.SetParentPeerBytes(ip, bytes)
+	metrics.SetParentPeerTraffic(ip, bytes)
 	metrics.SetParentPeerTenure(now.Sub(m.parentSince).Seconds())
 }

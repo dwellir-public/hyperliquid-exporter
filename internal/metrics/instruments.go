@@ -133,7 +133,7 @@ var (
 
 	// Parent peer metrics
 	HLNodeParentPeerGauge           api.Float64ObservableGauge
-	HLNodeParentPeerBytesGauge      api.Float64ObservableGauge
+	HLNodeParentPeerTrafficGauge    api.Float64ObservableGauge
 	HLNodeParentPeerTenureGauge     api.Float64ObservableGauge
 	HLNodeParentPeerSwitchesCounter api.Int64Counter
 	HLNodeParentPeerLatencyGauge    api.Float64ObservableGauge
@@ -957,12 +957,12 @@ func createInstruments() error {
 		return fmt.Errorf("failed to create parent peer gauge: %w", err)
 	}
 
-	HLNodeParentPeerBytesGauge, err = meter.Float64ObservableGauge(
-		"hl_node_parent_peer_bytes",
-		api.WithDescription("Inbound bytes from parent peer per interval (GB)"),
+	HLNodeParentPeerTrafficGauge, err = meter.Float64ObservableGauge(
+		"hl_node_parent_peer_traffic",
+		api.WithDescription("Inbound traffic volume from parent peer per interval (raw value from tcp_traffic logs)"),
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create parent peer bytes gauge: %w", err)
+		return fmt.Errorf("failed to create parent peer traffic gauge: %w", err)
 	}
 
 	HLNodeParentPeerTenureGauge, err = meter.Float64ObservableGauge(

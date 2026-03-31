@@ -67,7 +67,7 @@ func getAllObservables() []api.Observable {
 
 		// Parent peer metrics
 		HLNodeParentPeerGauge,
-		HLNodeParentPeerBytesGauge,
+		HLNodeParentPeerTrafficGauge,
 		HLNodeParentPeerTenureGauge,
 		HLNodeParentPeerLatencyGauge,
 

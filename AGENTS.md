@@ -37,7 +37,7 @@ docker compose up
 - **`internal/exporter/`** — Orchestrator. `Start()` launches ~14 monitor goroutines with error channels; handles graceful shutdown via context cancellation.
 - **`internal/monitors/`** — One file per monitor (block, consensus, evm, replica, validator, gossip, etc.). Each runs in its own goroutine, reads node files or APIs, and calls metric setters.
 - **`internal/metrics/`** — Metric definitions (`instruments.go`), update functions (`setters.go`), async callbacks (`callbacks.go`), cleanup loop, Prometheus server (`prometheus.go`), OTLP setup (`otlp.go`). Global state via `currentValues`/`labeledValues` maps. Cleanup runs every 30s, capping labeled values at 100 per metric.
-- **`internal/peermon/`** — Peer latency monitoring (`--peer-latency`). Maintains bounded peer set (max 100) with disk persistence, probes peers via TCP connect once per minute. Fed peer IPs from gossip monitors and tcp_traffic logs (outbound peer discovery).
+- **`internal/peermon/`** — Peer latency monitoring (`--peer-latency`). Maintains bounded peer set (max 128) with disk persistence, probes peers via TCP connect once per minute. Fed peer IPs from gossip monitors and tcp_traffic logs (outbound peer discovery).
 - **`internal/replica/`** — Parses msgpack-formatted `replica_cmds` files into block metrics. Object pooling for memory efficiency.
 - **`internal/cache/`** — Thread-safe LRU cache with optional TTL. Used for signer→validator mappings, validator info, contract data.
 - **`internal/config/`** — Merges `.env` + env vars + CLI flags into `Config` struct.

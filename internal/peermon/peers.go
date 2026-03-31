@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const maxPeers = 100
+const maxPeers = 128
 
 // PeerDirection indicates how this node relates to a peer.
 type PeerDirection string

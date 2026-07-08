@@ -63,16 +63,10 @@ Group=$USER
 WantedBy=multi-user.target" | sudo tee /etc/systemd/system/hyperliquid-exporter.service
 ```
 
-## Run with Docker
+## Deploy with Juju
 
-Use Docker to run `hyperliquid-exporter` in a container:
-
-1. Edit `docker-compose.yml` to set the correct paths for your Hyperliquid node data directory and binary.
-
-2. Build the image and run the container:
-```bash
-docker compose up -d
-```
+In production, `hyperliquid-exporter` is deployed as a systemd service via the
+[hyperliquid-metrics-exporter Juju charm](https://github.com/dwellir-public/ops/tree/main/juju/charms/hyperliquid-metrics-exporter).
 
 ## Documentation
 

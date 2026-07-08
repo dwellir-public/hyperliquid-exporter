@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- `Dockerfile` and `docker-compose.yml`: deployment is handled by the [hyperliquid-metrics-exporter Juju charm](https://github.com/dwellir-public/ops/tree/main/juju/charms/hyperliquid-metrics-exporter), which runs the binary as a systemd service
+
 ### Fixed
 
 - Peer map race crash, random labeled-metric eviction, empty API retry bodies, fd leaks on log rotation, validator latency staleness after midnight rollover

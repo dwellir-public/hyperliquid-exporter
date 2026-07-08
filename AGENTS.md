@@ -15,9 +15,6 @@ make clean                # remove bin/
 
 # Run
 ./bin/hyperliquid-exporter start --chain mainnet [flags]
-
-# Docker
-docker compose up
 ```
 
 ## CLI Flags

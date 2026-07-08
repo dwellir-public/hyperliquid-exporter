@@ -1,7 +1,7 @@
 # Peer Quality Metrics: Per-Peer Traffic, Parent Tenure Attribution, Eviction Protection
 
 **Date:** 2026-07-08
-**Commit:** b5d5b82 (main)
+**Commit:** 08773a7 (main)
 
 ## TL;DR
 
@@ -13,7 +13,7 @@ Operators need to rank Hyperliquid peers by demonstrated quality of service ("a 
 
 - `internal/monitors/outbound_peers_monitor.go` parses every `tcp_traffic` flow (direction, IP, bytes) but keeps only the IP+direction for peer discovery; bytes are discarded (`processFile`, outbound_peers_monitor.go:92).
 - `internal/monitors/parent_peer_monitor.go` finds the top inbound peer per log line but emits only a point-in-time gauge (`hl_node_parent_peer_traffic`); volume history and runner-up data are lost.
-- Parent tenure is a single label-less gauge of the *current* spell (`SetParentPeerTenure`, setters.go:1418); when the parent switches, that peer's accumulated service history vanishes.
+- Parent tenure is a single label-less gauge of the *current* spell (`SetParentPeerTenure`, setters.go:1447); when the parent switches, that peer's accumulated service history vanishes.
 - Block metrics (`hl_core_block_height`, block time histograms) are node-global; nothing links "did the block rate keep up" to the peer that was delivering blocks at the time.
 - The `PeerSet` LRU (`internal/peermon/peers.go`, `maxPeers = 128`) evicts by oldest `LastSeen`, so churn from transient inbound peers can evict exactly the high-value ex-parent peers the ledger cares about.
 
@@ -57,7 +57,7 @@ All new metrics are active whenever the corresponding existing monitors run (gat
 
 Declare the vars alongside the other peer instruments (instruments.go:130-140 area holds the counter fields).
 
-**New setters** (in `internal/metrics/setters.go`, follow `IncrementPeerProbes` at setters.go:1324):
+**New setters** (in `internal/metrics/setters.go`, follow `IncrementPeerProbes` at setters.go:1351):
 
 ```go
 func AddPeerTrafficVolume(peerIP, direction string, volume float64) {
@@ -84,7 +84,7 @@ The line callback already unmarshals `entry [2]json.RawMessage` where `entry[0]`
 3. Parse the line timestamp from `entry[0]`. The format matches the block-time layout `"2006-01-02T15:04:05.999999999"` used at block_monitor.go:187 — confirm against a real tcp_traffic line in the test fixtures (`parent_peer_monitor_test.go` fixtures show the line shape) and fall back to skipping active-seconds for unparseable timestamps.
 4. Track `lastLineTS time.Time` on the monitor struct. For each line after the first: `delta = ts.Sub(m.lastLineTS).Seconds()`, clamped to `[0, 900]` (15 min cap guards against file gaps and restarts overcounting). For every IP active in that line, call `metrics.AddPeerActiveSeconds(ip, delta)`. Then update `lastLineTS`.
 5. For each `(ip, dir) → volume` accumulated from the line, call `metrics.AddPeerTrafficVolume(ip, string(dir), volume)`. tcp_traffic lines are interval snapshots (each line is one interval's volume — the parent monitor's per-line "top peer" logic at parent_peer_monitor.go:87-88 relies on this), so adding each line's value is correct cumulative accounting.
-6. On seed processing at startup (`monitor()`, outbound_peers_monitor.go:47-56), the monitor replays the whole current hourly file from offset 0. Volume counters SHOULD count those lines (they are real traffic from this hour); active-seconds accumulate naturally since line timestamps drive the delta. On file switch (`poll()`, outbound_peers_monitor.go:74-78) keep `lastLineTS` — hourly files are continuous.
+6. On seed processing at startup (`monitor()`, outbound_peers_monitor.go:47-56), the monitor replays the whole current hourly file from offset 0. **Suppress counter emission during this seed pass** (both volume and active-seconds): Prometheus already recorded the pre-restart samples for that traffic, so re-adding it after the counter reset would make `increase()` windows spanning the restart double-count up to an hour of volume. Keep peer discovery during seed exactly as today, and DO update `lastLineTS` from seed lines so the first live line gets a correct active-seconds delta. Mechanically: pass a `seeding bool` to `processFile` (or set a monitor field around the seed call) that gates the two `metrics.Add*` calls. On file switch (`poll()`, outbound_peers_monitor.go:74-78) keep `lastLineTS` — hourly files are continuous.
 
 Do the accounting inside the existing line callback; do not add a second file reader. Only skip counter emission when volume parsing fails for that flow.
 
@@ -144,18 +144,22 @@ const (
 Semantics:
 
 - `SetParent(ip)`: account elapsed time to the *old* parent first (see accounting below), then swap `parentIP` and reset `lastAccount`. Called with `ip == ""` never happens (parent monitor only calls on a concrete IP).
-- `OnBlock(blockTime)`: compute `gap` between consecutive `blockTime` values (chain timestamps, monotonic per fast state); update both EMAs (`ema = alpha*gap + (1-alpha)*ema`, seeding both with the first gap); `samples++`. Then account elapsed wall time and increment `hl_node_parent_peer_blocks_total{parentIP}`. Update `lastBlock = q.now()`.
-- `degraded()`: `samples >= emaWarmupBlocks && fastGapEMA > slowGapEMA/degradedRateFraction`. (Gap is inverse of rate: short-window rate < 80% of baseline ⇔ fast gap > baseline gap / 0.8.)
-- Accounting (shared by `OnBlock`, `Flush`, `SetParent`): if `parentIP == ""` or `lastAccount.IsZero()`, just reset `lastAccount` and return. Otherwise `delta = min(now - lastAccount, maxAccountGapSeconds)`; add to `tenure_seconds_total{parentIP}`; add to `degraded_seconds_total{parentIP}` when degraded. For `Flush` specifically, also treat "stall" as degraded: `now - lastBlock > max(stallFloorSeconds, 4*slowGapEMA)` forces the degraded verdict for that delta even before warmup completes... no — keep warmup authoritative for the rate-band, but the stall check applies once at least one block has been seen (`!lastBlock.IsZero()`). Advance `lastAccount = now`.
+- `OnBlock(blockTime)`: compute `gap` between consecutive `blockTime` values (chain timestamps, monotonic per fast state); update both EMAs (`ema = alpha*gap + (1-alpha)*ema`, seeding both with the first gap); `samples++`. Then account elapsed wall time, and — only when `parentIP != ""` — increment `hl_node_parent_peer_blocks_total{parentIP}` (validator nodes without a parent must not emit an empty `peer_ip` series). Update `lastBlock = q.now()`.
+- Accounting (shared by `OnBlock`, `Flush`, `SetParent`): if `parentIP == ""` or `lastAccount.IsZero()`, just reset `lastAccount` and return. Otherwise `delta = min(now - lastAccount, maxAccountGapSeconds)`; add `delta` to `tenure_seconds_total{parentIP}`; add `delta` to `degraded_seconds_total{parentIP}` when the degraded verdict (below) holds. Advance `lastAccount = now`.
+- Degraded verdict — two independent triggers:
+  - **Rate-band** (all call sites, requires warmup): `samples >= emaWarmupBlocks && fastGapEMA > slowGapEMA/degradedRateFraction`. (Gap is inverse of rate: short-window rate < 80% of baseline ⇔ fast gap > baseline gap / 0.8.)
+  - **Stall** (`Flush` only, no warmup requirement, needs `!lastBlock.IsZero()`): `now - lastBlock > max(stallFloorSeconds, 4*slowGapEMA)`.
+- Accepted gap: a stall shorter than the poll interval (30s) that ends with a block is accounted by `OnBlock`, where only the rate-band applies — so before warmup completes, sub-30s stalls are never marked degraded. After warmup the fast EMA absorbs the long gap and the rate-band catches them.
 
 **Integration:**
 
-- `parseBlockTimeLine` (block_monitor.go:159): inside the existing `if stateType == "fast"` branch (block_monitor.go:231-234), add `quality.OnBlock(parsedTime)`. Only fast state — it drives `hl_core_block_height` today and avoids double-counting across state types. Note the same branch exists in the legacy path; grep for the second `stateType == "fast"` occurrence (block_monitor.go:398 area) and add the call there too.
+- `parseBlockTimeLine` (block_monitor.go:159): inside the existing `if stateType == "fast"` branch (block_monitor.go:235), add `quality.OnBlock(parsedTime)`. Only fast state — it drives `hl_core_block_height` today and avoids double-counting across state types. There is no second fast-state branch: the pre-upgrade single-directory path goes through `parseLegacyBlockTimeLine`, which keys everything as `"legacy"`. Add the same `quality.OnBlock(parsedTime)` call there (next to the `lastBlockTimes.Set("legacy", parsedTime)` update, block_monitor.go:387) so legacy nodes get attribution too.
+- **No block replay on startup:** both block-monitor paths seek to end-of-file on first run (block_monitor.go:117, legacy path block_monitor.go:288), so `OnBlock` only ever sees live blocks. There is no burst of replayed historical blocks to misattribute to the current parent, and the EMAs warm up on live gaps only.
 - `ParentPeerMonitor.updateParent` (parent_peer_monitor.go:167): on parent change (the `ip != m.currentParent` branch), call `quality.SetParent(ip)` next to the existing `m.setParentPeer(ip)` call.
 - `ParentPeerMonitor.poll` (parent_peer_monitor.go:70): call `quality.Flush()` after `processFile` so stalls are accounted every `gossipPollInterval` (30s, defined gossip_monitor.go:20) even when no blocks arrive.
 - Parent traffic volume: in `ParentPeerMonitor.processFile`'s line callback (parent_peer_monitor.go:93-101), for each line whose `topIP` is non-empty, call `metrics.AddParentPeerTrafficVolume(topIP, topBytes)`. The top inbound peer per line *is* the parent by definition, so per-line accumulation under `topIP` is exactly "volume delivered while parent" — including correct attribution across a switch mid-batch.
 
-**Startup replay caveat:** `ParentPeerMonitor.monitor` seeds from the full current hourly file (parent_peer_monitor.go:50-57), so up to an hour of `topBytes` is replayed into the traffic counter on restart. That matches the active-seconds/volume replay in component 1 and is correct "this hour really happened" accounting; tenure/degraded are wall-clock based and do not replay. Accept the small asymmetry (volume replays, tenure doesn't); ledger queries operate on multi-hour windows where it washes out.
+**Startup replay:** `ParentPeerMonitor.monitor` seeds from the full current hourly file (parent_peer_monitor.go:50-57). As in component 1, **suppress `AddParentPeerTrafficVolume` during the seed pass** — Prometheus recorded the pre-restart samples already, and replaying `topBytes` after the counter reset would double-count in `increase()` windows spanning the restart. The seed pass still elects the current parent (existing behavior, unchanged); volume counting starts at the live offset. Tenure/degraded/blocks are wall-clock and live-block driven respectively, so they never replay — all four parent counters now share the same "live data only" semantics.
 
 ### 3) Eviction protection for ex-parents
 
@@ -175,7 +179,7 @@ func (ps *PeerSet) MarkParent(ip string)
 
 Implemented as `Register`-like: validate IP, lock, create the peer if absent (parents are by definition seen in tcp_traffic, but ordering between monitors isn't guaranteed), set `WasParent = true`, bump `gen`, mark dirty.
 
-4. `evictOldest` (peers.go:218): evict the oldest `LastSeen` among peers with `!WasParent`; only if every peer has `WasParent` (practically unreachable — parents are a handful), fall back to oldest overall so `Register` can't fail.
+4. `evictOldest` (peers.go:228): evict the oldest `LastSeen` among peers with `!WasParent`; only if every peer has `WasParent` (practically unreachable — parents are a handful), fall back to oldest overall so `Register` can't fail.
 
 **Changes in `internal/peermon/monitor.go`:**
 
@@ -192,7 +196,7 @@ Eviction still calls `removePeerMetrics(evictedIP)` (monitor.go:55), which clear
 - `internal/monitors/outbound_peers_monitor.go` (modify) — volume + active-seconds accounting in `processFile`
 - `internal/monitors/parent_quality.go` (new) — `parentQuality` accumulator + rate-band detector
 - `internal/monitors/parent_peer_monitor.go` (modify) — `quality.SetParent` on switch, `quality.Flush` in poll, per-line parent volume counter
-- `internal/monitors/block_monitor.go` (modify) — `quality.OnBlock(parsedTime)` in both fast-state branches
+- `internal/monitors/block_monitor.go` (modify) — `quality.OnBlock(parsedTime)` in the fast-state branch and the legacy parse path
 - `internal/peermon/peers.go` (modify) — cap 256, `WasParent`, `MarkParent`, eviction exemption
 - `internal/peermon/monitor.go` (modify) — `SetParentPeer` marks the peer
 - `internal/monitors/parent_quality_test.go` (new)
@@ -202,8 +206,8 @@ Eviction still calls `removePeerMetrics(evictedIP)` (monitor.go:55), which clear
 
 ## Edge Cases & Safety
 
-- **No parent yet / parent monitor disabled** (tcp_traffic dir missing, parent_peer_monitor.go:36): `quality.parentIP` stays empty; `OnBlock`/`Flush` still update EMAs but account nothing. Validator nodes without a parent produce no tenure series — correct.
-- **Exporter restart:** counters reset to 0; `increase()`/`rate()` in Prometheus absorb the reset. EMA warmup (300 blocks ≈ a few minutes at sub-second blocks) suppresses degraded verdicts right after restart, avoiding false degraded attribution while the baseline re-forms.
+- **No parent yet / parent monitor disabled** (tcp_traffic dir missing, parent_peer_monitor.go:36): `quality.parentIP` stays empty; `OnBlock`/`Flush` still update EMAs but account nothing and do not increment `blocks_total`. Validator nodes without a parent produce no tenure/blocks series (and never an empty-`peer_ip` label) — correct.
+- **Exporter restart:** counters reset to 0; `increase()`/`rate()` in Prometheus absorb the reset. Seed-pass suppression (components 1 and 2) prevents the replayed hourly file from double-counting traffic that pre-restart samples already recorded. EMA warmup (300 blocks ≈ a few minutes at sub-second blocks) suppresses degraded verdicts right after restart, avoiding false degraded attribution while the baseline re-forms.
 - **Log replay after downtime:** the `maxAccountGapSeconds` clamp (15 min) bounds tenure/degraded deltas; the active-seconds clamp does the same for component 1. A multi-hour outage attributes at most 15 minutes to the pre-outage parent.
 - **Ambiguous parent** (runner-up within 10%, parent_peer_monitor.go:107): unchanged behavior; volume still goes to the elected top peer. The existing warning log is the operator signal.
 - **Concurrency:** `quality` is called from the block-monitor goroutine (`OnBlock`) and the parent-monitor goroutine (`SetParent`, `Flush`); everything inside `parentQuality` is mutex-guarded. Counter `.Add` calls are OTel-thread-safe. `PeerSet` methods are already mutex-guarded.
@@ -220,6 +224,7 @@ Metrics init in monitor tests goes through `initTestMetrics` (`internal/monitors
 - `TestParentQuality_SwitchAttribution` — accumulate under parent A, `SetParent("B")`, assert A's tenure stops growing and the pre-switch delta landed on A.
 - `TestParentQuality_WarmupSuppression` — degraded never true before `emaWarmupBlocks` samples (rate-band path; stall path still fires).
 - `TestOutboundPeersMonitor_TrafficVolume` / `_ActiveSeconds` — fixture lines with two peers and known byte values + timestamps; assert per-(ip,direction) sums and per-ip active seconds (first line contributes no active time). Reuse the fixture-writing helpers from `parent_peer_monitor_test.go:14-115`.
+- `TestOutboundPeersMonitor_SeedSuppression` — pre-populate the hourly file, run the startup seed pass, assert no volume/active-seconds emission but peer discovery worked and `lastLineTS` was set (so the first live line after seeding produces a correct delta).
 - `TestPeerSet_EvictionSkipsParents` — fill to cap with one `MarkParent`ed peer as oldest; register a new IP; assert a non-parent was evicted.
 - `TestPeerSet_MarkParentRegistersUnknown` and a Load/Save round-trip asserting `was_parent` persists (extend `TestPeerSet_LoadSaveRoundTrip`, peers_test.go:83).
 

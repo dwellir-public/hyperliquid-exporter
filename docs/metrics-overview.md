@@ -1,7 +1,7 @@
 ---
 last_edited: 2026-07-08
-version: 2.1.4 (plus unreleased peer-quality counters)
-commit: 74ee8b6
+version: 2.2.0
+commit: 37891c7
 ---
 
 # Hyperliquid Exporter Metrics Reference

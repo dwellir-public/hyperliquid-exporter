@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-07-08
+
 ### Added
 
 - Per-peer traffic counters (require `--peer-latency`): `hl_peer_traffic_volume_total{peer_ip,direction}` and `hl_peer_active_seconds_total{peer_ip}` accumulate each peer's `tcp_traffic` volume (raw units, unconfirmed) and active time
@@ -179,7 +181,8 @@ Initial release post-fork.
 - `--disable-prom` flag (Prometheus now always enabled)
 - `hl_evm_transactions_total` metric (replaced by `hl_evm_tx_type_total`)
 
-[Unreleased]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.1.4...HEAD
+[Unreleased]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.1.4...v2.2.0
 [2.1.4]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.1.3...v2.1.4
 [2.1.3]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.1.2...v2.1.3
 [2.1.2]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.1.1...v2.1.2

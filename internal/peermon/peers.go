@@ -108,9 +108,19 @@ func (ps *PeerSet) All() []Peer {
 
 	out := make([]Peer, 0, len(ps.peers))
 	for _, p := range ps.peers {
-		out = append(out, *p)
+		out = append(out, copyPeer(p))
 	}
 	return out
+}
+
+// copyPeer deep-copies a peer so callers can use it outside the lock.
+func copyPeer(p *Peer) Peer {
+	c := *p
+	c.Directions = make(map[PeerDirection]bool, len(p.Directions))
+	for k, v := range p.Directions {
+		c.Directions[k] = v
+	}
+	return c
 }
 
 // Len returns the number of peers.
@@ -200,7 +210,7 @@ func (ps *PeerSet) snapshotForSave() ([]Peer, uint64, bool) {
 
 	peers := make([]Peer, 0, len(ps.peers))
 	for _, p := range ps.peers {
-		peers = append(peers, *p)
+		peers = append(peers, copyPeer(p))
 	}
 	return peers, ps.gen, true
 }

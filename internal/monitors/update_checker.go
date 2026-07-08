@@ -112,16 +112,17 @@ func checkSoftwareUpdate(ctx context.Context, cfg config.Config) error {
 }
 
 func updateUpToDateStatus() {
-	if currentCommitHash == "" {
+	hash := loadCommitHash()
+	if hash == "" {
 		// version monitor hasn't run yet, skip
 		return
 	}
 
-	if currentCommitHash == cachedLatestHash {
+	if hash == cachedLatestHash {
 		metrics.SetSoftwareUpToDate(true)
 	} else {
 		metrics.SetSoftwareUpToDate(false)
 		logger.InfoComponent("system", "Software is NOT up to date. Current: %s, Latest: %s",
-			currentCommitHash, cachedLatestHash)
+			hash, cachedLatestHash)
 	}
 }

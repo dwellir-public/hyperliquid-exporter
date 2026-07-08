@@ -170,6 +170,7 @@ func Start(ctx context.Context, cfg config.Config) {
 			logger.ErrorComponent("peer-latency", "Peer latency monitor error: %v", err)
 		case <-ctx.Done():
 			logger.InfoComponent("system", "Shutting down monitors...")
+			metrics.Shutdown()
 			return
 		}
 		// small sleep to prevent tight loop in case of repeated errors

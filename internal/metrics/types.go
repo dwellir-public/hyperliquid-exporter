@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"runtime"
+	"sort"
 	"sync"
 	"time"
 
@@ -11,8 +12,9 @@ import (
 )
 
 type labeledValue struct {
-	value  float64
-	labels []attribute.KeyValue
+	value     float64
+	labels    []attribute.KeyValue
+	updatedAt time.Time
 }
 
 type NodeIdentity struct {
@@ -143,23 +145,26 @@ func cleanupLabeledValues() {
 	defer metricsMutex.Unlock()
 
 	// keep a reasonable number of labeled values per metric
-	const maxLabelsPerMetric = 100 // reduced from 1000 to 100
+	const maxLabelsPerMetric = 200
 
 	for metric, labels := range labeledValues {
-		if len(labels) > maxLabelsPerMetric {
-			// create new map with limited size
-			newLabels := make(map[string]labeledValue)
-			count := 0
-
-			// keep the most recent entries (this is a simple approach)
-			for k, v := range labels {
-				if count < maxLabelsPerMetric {
-					newLabels[k] = v
-					count++
-				}
-			}
-
-			labeledValues[metric] = newLabels
+		if len(labels) <= maxLabelsPerMetric {
+			continue
 		}
+
+		// evict the least recently updated entries
+		keys := make([]string, 0, len(labels))
+		for k := range labels {
+			keys = append(keys, k)
+		}
+		sort.Slice(keys, func(i, j int) bool {
+			return labels[keys[i]].updatedAt.After(labels[keys[j]].updatedAt)
+		})
+
+		newLabels := make(map[string]labeledValue, maxLabelsPerMetric)
+		for _, k := range keys[:maxLabelsPerMetric] {
+			newLabels[k] = labels[k]
+		}
+		labeledValues[metric] = newLabels
 	}
 }

@@ -3,6 +3,7 @@ package metrics
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	api "go.opentelemetry.io/otel/metric"
@@ -21,13 +22,16 @@ func setupCleanupTest(t *testing.T) {
 	})
 }
 
+// makeEntries creates n entries where addr-0 is the oldest and addr-(n-1) the newest.
 func makeEntries(n int) map[string]labeledValue {
+	base := time.Now().Add(-time.Duration(n) * time.Second)
 	m := make(map[string]labeledValue, n)
 	for i := range n {
 		k := fmt.Sprintf("addr-%d", i)
 		m[k] = labeledValue{
-			value:  float64(i),
-			labels: []attribute.KeyValue{attribute.String("k", k)},
+			value:     float64(i),
+			labels:    []attribute.KeyValue{attribute.String("k", k)},
+			updatedAt: base.Add(time.Duration(i) * time.Second),
 		}
 	}
 	return m
@@ -38,17 +42,23 @@ func TestCleanupPrunes(t *testing.T) {
 	gauge := noop.Float64ObservableGauge{}
 
 	metricsMutex.Lock()
-	labeledValues[gauge] = makeEntries(150)
+	labeledValues[gauge] = makeEntries(250)
 	metricsMutex.Unlock()
 
 	cleanupLabeledValues()
 
 	metricsMutex.RLock()
-	got := len(labeledValues[gauge])
-	metricsMutex.RUnlock()
+	defer metricsMutex.RUnlock()
 
-	if got != 100 {
-		t.Errorf("len after cleanup = %d, want 100", got)
+	if got := len(labeledValues[gauge]); got != 200 {
+		t.Fatalf("len after cleanup = %d, want 200", got)
+	}
+	// the 200 most recently updated entries (addr-50..addr-249) must survive
+	for i := 50; i < 250; i++ {
+		k := fmt.Sprintf("addr-%d", i)
+		if _, ok := labeledValues[gauge][k]; !ok {
+			t.Errorf("recent entry %s evicted", k)
+		}
 	}
 }
 
@@ -77,7 +87,7 @@ func TestCleanupMultipleMetrics(t *testing.T) {
 	small := noop.Int64ObservableGauge{}
 
 	metricsMutex.Lock()
-	labeledValues[big] = makeEntries(200)
+	labeledValues[big] = makeEntries(300)
 	labeledValues[small] = makeEntries(50)
 	metricsMutex.Unlock()
 
@@ -88,8 +98,8 @@ func TestCleanupMultipleMetrics(t *testing.T) {
 	smallLen := len(labeledValues[small])
 	metricsMutex.RUnlock()
 
-	if bigLen != 100 {
-		t.Errorf("big metric len = %d, want 100", bigLen)
+	if bigLen != 200 {
+		t.Errorf("big metric len = %d, want 200", bigLen)
 	}
 	if smallLen != 50 {
 		t.Errorf("small metric len = %d, want 50", smallLen)

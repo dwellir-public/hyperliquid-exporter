@@ -24,8 +24,15 @@ type ValidatorLatencyMonitor struct {
 	config        *config.Config
 	latencyDir    string
 	emaDir        string
-	lastProcessed map[string]int64 // Track last processed position per validator
+	lastProcessed map[string]filePos // Track last processed file+position per validator
 	lastEMATime   time.Time
+}
+
+// filePos records how far a date-named latency file has been read;
+// the path resets the offset when the day rolls over
+type filePos struct {
+	path string
+	pos  int64
 }
 
 // latency entry
@@ -47,7 +54,7 @@ func NewValidatorLatencyMonitor(cfg *config.Config) *ValidatorLatencyMonitor {
 		config:        cfg,
 		latencyDir:    filepath.Join(cfg.NodeHome, "data", "validator_latency"),
 		emaDir:        filepath.Join(cfg.NodeHome, "data", "validator_latency_ema"),
-		lastProcessed: make(map[string]int64),
+		lastProcessed: make(map[string]filePos),
 	}
 }
 
@@ -134,16 +141,17 @@ func (m *ValidatorLatencyMonitor) processValidatorLatencyFile(validator, filePat
 	}
 	defer func() { _ = file.Close() }()
 
-	// get last processed position
-	lastPos, exists := m.lastProcessed[validator]
-	if exists && lastPos > 0 {
+	// get last processed position; a different path means the day rolled
+	// over to a fresh file, so start from the beginning
+	last, exists := m.lastProcessed[validator]
+	if exists && last.path == filePath && last.pos > 0 {
 		// seek to last position
-		if _, err := file.Seek(lastPos, 0); err != nil {
+		if _, err := file.Seek(last.pos, 0); err != nil {
 			return fmt.Errorf("failed to seek: %w", err)
 		}
-		logger.DebugComponent("latency", "Continuing from position %d for validator %s", lastPos, validator)
+		logger.DebugComponent("latency", "Continuing from position %d for validator %s", last.pos, validator)
 	} else {
-		logger.DebugComponent("latency", "First run: starting from beginning of file for validator %s", validator)
+		logger.DebugComponent("latency", "New file: starting from beginning of %s for validator %s", filePath, validator)
 	}
 
 	scanner := bufio.NewScanner(file)
@@ -165,7 +173,7 @@ func (m *ValidatorLatencyMonitor) processValidatorLatencyFile(validator, filePat
 
 	// update last processed position
 	pos, _ := file.Seek(0, 1) // get current position
-	m.lastProcessed[validator] = pos
+	m.lastProcessed[validator] = filePos{path: filePath, pos: pos}
 
 	// update metrics with latest entry
 	if latestEntry != nil {

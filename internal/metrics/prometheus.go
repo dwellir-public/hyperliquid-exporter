@@ -13,32 +13,13 @@ import (
 func StartPrometheusServer(ctx context.Context, port int) error {
 	mux := http.NewServeMux()
 
-	// middleware to log metrics requests with timeout
-	metricsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// TimeoutHandler buffers the response and safely replies 503 on timeout,
+	// avoiding concurrent writes to the ResponseWriter
+	promHandler := http.TimeoutHandler(promhttp.Handler(), 30*time.Second, "Metrics collection timed out\n")
+	mux.Handle("/metrics", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger.Debug("Metrics endpoint called from %s", r.RemoteAddr)
-
-		// create context with timeout to prevent indefinite hangs
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		defer cancel()
-
-		// create channel to signal completion
-		done := make(chan struct{})
-
-		go func() {
-			promhttp.Handler().ServeHTTP(w, r.WithContext(ctx))
-			close(done)
-		}()
-
-		select {
-		case <-done:
-			logger.Debug("Metrics endpoint response completed")
-		case <-ctx.Done():
-			logger.Error("Metrics endpoint timed out after 30 seconds")
-			http.Error(w, "Metrics collection timed out", http.StatusServiceUnavailable)
-		}
-	})
-
-	mux.Handle("/metrics", metricsHandler)
+		promHandler.ServeHTTP(w, r)
+	}))
 
 	// health check endpoint for debugging
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

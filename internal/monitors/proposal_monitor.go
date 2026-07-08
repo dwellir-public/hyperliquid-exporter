@@ -37,6 +37,7 @@ func StartProposalMonitor(ctx context.Context, cfg config.Config, errCh chan<- e
 
 		logsDir := filepath.Join(cfg.NodeHome, "data/replica_cmds")
 		var currentFile string
+		var openFile *os.File
 		var fileReader *bufio.Reader
 		isFirstRun := true
 
@@ -56,8 +57,10 @@ func StartProposalMonitor(ctx context.Context, cfg config.Config, errCh chan<- e
 				// if a new file is found, switch to it
 				if latestFile != currentFile {
 					logger.InfoComponent("consensus", "Switching to new proposal log file: %s", latestFile)
-					if fileReader != nil {
-						fileReader = nil // allow the old file to be garbage collected
+					if openFile != nil {
+						_ = openFile.Close()
+						openFile = nil
+						fileReader = nil
 					}
 					file, err := os.Open(latestFile)
 					if err != nil {
@@ -80,6 +83,7 @@ func StartProposalMonitor(ctx context.Context, cfg config.Config, errCh chan<- e
 						logger.InfoComponent("consensus", "Not first run: reading entire file %s", latestFile)
 					}
 
+					openFile = file
 					fileReader = bufio.NewReader(file)
 					currentFile = latestFile
 					isFirstRun = false

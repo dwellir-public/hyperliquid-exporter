@@ -95,6 +95,7 @@ func StartEVMMonitor(ctx context.Context, cfg config.Config, errCh chan<- error)
 		}
 
 		var currentFilePath string
+		var openFile *os.File
 		var fileReader *bufio.Reader
 		isFirstRun := true
 
@@ -116,7 +117,9 @@ func StartEVMMonitor(ctx context.Context, cfg config.Config, errCh chan<- error)
 				if latestFile != currentFilePath {
 					logger.InfoComponent("evm", "Switching to new EVM data file: %s", latestFile)
 
-					if fileReader != nil {
+					if openFile != nil {
+						_ = openFile.Close()
+						openFile = nil
 						fileReader = nil
 					}
 
@@ -141,6 +144,7 @@ func StartEVMMonitor(ctx context.Context, cfg config.Config, errCh chan<- error)
 						logger.InfoComponent("evm", "Not first run: reading entire file %s", latestFile)
 					}
 
+					openFile = file
 					fileReader = bufio.NewReader(file)
 					currentFilePath = latestFile
 				}

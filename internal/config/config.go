@@ -26,9 +26,7 @@ type Config struct {
 	ReplicaBufferSize      int
 	EnableValidatorRTT     bool
 	EnablePeerLatency      bool
-	MetricsAddr            string
 	LogLevel               string
-	LogFormat              string
 }
 
 type Flags struct {
@@ -46,9 +44,7 @@ type Flags struct {
 	ReplicaBufferSize     int
 	EnableValidatorRTT    *bool // to distinguish between not set and false
 	EnablePeerLatency     *bool
-	MetricsAddr           string
 	LogLevel              string
-	LogFormat             string
 }
 
 // load env vars and returns a Config struct
@@ -106,9 +102,7 @@ func LoadConfig(flags *Flags) Config {
 		ReplicaDataDir:         replicaDataDir,
 		ReplicaBufferSize:      replicaBufferSize,
 		EnableValidatorRTT:     false,
-		MetricsAddr:            flags.MetricsAddr,
 		LogLevel:               flags.LogLevel,
-		LogFormat:              flags.LogFormat,
 	}
 
 	if flags.NodeHome != "" {

@@ -2,6 +2,7 @@ package replica
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -205,6 +206,12 @@ func (p *Parser) parseActionBundles(bundlesJSON json.RawMessage, actionCounts, o
 
 // counts elements in a JSON array without full parsing
 func countJSONArrayElements(data json.RawMessage) int {
+	// empty array has zero elements, not one
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) >= 2 && len(bytes.TrimSpace(trimmed[1:len(trimmed)-1])) == 0 {
+		return 0
+	}
+
 	// quick counting by looking for commas
 	// this is approximate but much faster than parsing
 	count := 1

@@ -213,8 +213,9 @@ func RecordApplyDurationWithLabel(duration float64, stateType string) {
 		labeledValues[HLMetalApplyDurationGauge] = make(map[string]labeledValue)
 	}
 	labeledValues[HLMetalApplyDurationGauge][stateType] = labeledValue{
-		value:  duration,
-		labels: []attribute.KeyValue{attribute.String("state_type", stateType)},
+		updatedAt: time.Now(),
+		value:     duration,
+		labels:    []attribute.KeyValue{attribute.String("state_type", stateType)},
 	}
 }
 
@@ -225,7 +226,8 @@ func SetValidatorStake(address, signer, moniker string, stake float64) {
 		labeledValues[HLConsensusValidatorStakeGauge] = make(map[string]labeledValue)
 	}
 	labeledValues[HLConsensusValidatorStakeGauge][address] = labeledValue{
-		value: stake,
+		updatedAt: time.Now(),
+		value:     stake,
 		labels: []attribute.KeyValue{
 			attribute.String("validator", address),
 			attribute.String("signer", signer),
@@ -249,8 +251,9 @@ func SetValidatorJailedStatus(validator, signer, name string, status float64) {
 	}
 
 	labeledValues[HLConsensusValidatorJailedStatus][validator] = labeledValue{
-		value:  status,
-		labels: labels,
+		updatedAt: time.Now(),
+		value:     status,
+		labels:    labels,
 	}
 }
 
@@ -285,7 +288,8 @@ func SetSoftwareVersion(commit string, date string) {
 		labeledValues[HLSoftwareVersionInfo] = make(map[string]labeledValue)
 	}
 	labeledValues[HLSoftwareVersionInfo]["current"] = labeledValue{
-		value: 1,
+		updatedAt: time.Now(),
+		value:     1,
 		labels: []attribute.KeyValue{
 			attribute.String("date", date),
 			attribute.String("commit", commit),
@@ -354,8 +358,9 @@ func SetValidatorActiveStatus(validator, signer, name string, status float64) {
 	}
 
 	labeledValues[HLConsensusValidatorActiveStatus][validator] = labeledValue{
-		value:  status,
-		labels: labels,
+		updatedAt: time.Now(),
+		value:     status,
+		labels:    labels,
 	}
 }
 
@@ -374,8 +379,9 @@ func SetValidatorRTT(validator string, moniker string, ip string, latency float6
 	}
 
 	labeledValues[HLConsensusValidatorRTTGauge][validator] = labeledValue{
-		value:  latency,
-		labels: labels,
+		updatedAt: time.Now(),
+		value:     latency,
+		labels:    labels,
 	}
 }
 
@@ -417,8 +423,9 @@ func SetEVMBaseFeeGwei(fee float64, blockType ...string) {
 			labeledValues[HLEVMBaseFeeGauge] = make(map[string]labeledValue)
 		}
 		labeledValues[HLEVMBaseFeeGauge][bt] = labeledValue{
-			value:  fee,
-			labels: []attribute.KeyValue{attribute.String("block_type", bt)},
+			updatedAt: time.Now(),
+			value:     fee,
+			labels:    []attribute.KeyValue{attribute.String("block_type", bt)},
 		}
 	}
 }
@@ -444,8 +451,9 @@ func SetEVMGasUsage(gasUsed, gasLimit int64, blockType ...string) {
 			labeledValues[HLEVMGasUsedGauge] = make(map[string]labeledValue)
 		}
 		labeledValues[HLEVMGasUsedGauge][bt] = labeledValue{
-			value:  float64(gasUsed),
-			labels: []attribute.KeyValue{attribute.String("block_type", bt)},
+			updatedAt: time.Now(),
+			value:     float64(gasUsed),
+			labels:    []attribute.KeyValue{attribute.String("block_type", bt)},
 		}
 
 		// update gas limit with label
@@ -453,8 +461,9 @@ func SetEVMGasUsage(gasUsed, gasLimit int64, blockType ...string) {
 			labeledValues[HLEVMGasLimitGauge] = make(map[string]labeledValue)
 		}
 		labeledValues[HLEVMGasLimitGauge][bt] = labeledValue{
-			value:  float64(gasLimit),
-			labels: []attribute.KeyValue{attribute.String("block_type", bt)},
+			updatedAt: time.Now(),
+			value:     float64(gasLimit),
+			labels:    []attribute.KeyValue{attribute.String("block_type", bt)},
 		}
 
 		// update gas utilization with label
@@ -464,8 +473,9 @@ func SetEVMGasUsage(gasUsed, gasLimit int64, blockType ...string) {
 				labeledValues[HLEVMSGasUtilGauge] = make(map[string]labeledValue)
 			}
 			labeledValues[HLEVMSGasUtilGauge][bt] = labeledValue{
-				value:  util,
-				labels: []attribute.KeyValue{attribute.String("block_type", bt)},
+				updatedAt: time.Now(),
+				value:     util,
+				labels:    []attribute.KeyValue{attribute.String("block_type", bt)},
 			}
 		}
 	}
@@ -526,8 +536,9 @@ func SetEVMMaxPriorityFeeGwei(fee float64, blockType ...string) {
 			labeledValues[HLEVMMaxPriorityFeeGauge] = make(map[string]labeledValue)
 		}
 		labeledValues[HLEVMMaxPriorityFeeGauge][bt] = labeledValue{
-			value:  fee,
-			labels: []attribute.KeyValue{attribute.String("block_type", bt)},
+			updatedAt: time.Now(),
+			value:     fee,
+			labels:    []attribute.KeyValue{attribute.String("block_type", bt)},
 		}
 	}
 }
@@ -702,8 +713,9 @@ func SetValidatorLastVoteRound(validator string, round int64) {
 		labeledValues[HLConsensusVoteRoundGauge] = make(map[string]labeledValue)
 	}
 	labeledValues[HLConsensusVoteRoundGauge][validatorAddr] = labeledValue{
-		value:  float64(round),
-		labels: labels,
+		updatedAt: time.Now(),
+		value:     float64(round),
+		labels:    labels,
 	}
 }
 
@@ -726,8 +738,9 @@ func SetValidatorVoteTimeDiff(validator string, seconds float64) {
 		labeledValues[HLConsensusVoteTimeDiffGauge] = make(map[string]labeledValue)
 	}
 	labeledValues[HLConsensusVoteTimeDiffGauge][validatorAddr] = labeledValue{
-		value:  seconds,
-		labels: labels,
+		updatedAt: time.Now(),
+		value:     seconds,
+		labels:    labels,
 	}
 }
 
@@ -868,7 +881,8 @@ func SetValidatorConnectivity(validator, peer string, connected float64) {
 	// use combined key for validator-peer pairs
 	key := validatorAddr + "_" + peerAddr
 	labeledValues[HLConsensusConnectivityGauge][key] = labeledValue{
-		value: connected,
+		updatedAt: time.Now(),
+		value:     connected,
 		labels: []attribute.KeyValue{
 			attribute.String("validator", validatorAddr),
 			attribute.String("peer", peerAddr),
@@ -933,8 +947,9 @@ func SetValidatorHeartbeatStatus(validator, statusType string, value float64) {
 	// use combined key for validator-status pairs
 	key := validatorAddr + "_" + statusType
 	labeledValues[HLConsensusHeartbeatStatusGauge][key] = labeledValue{
-		value:  value,
-		labels: fullLabels,
+		updatedAt: time.Now(),
+		value:     value,
+		labels:    fullLabels,
 	}
 }
 
@@ -967,8 +982,9 @@ func SetQCParticipationRate(validator string, rate float64) {
 		labeledValues[HLConsensusQCParticipationGauge] = make(map[string]labeledValue)
 	}
 	labeledValues[HLConsensusQCParticipationGauge][validatorAddr] = labeledValue{
-		value:  rate,
-		labels: labels,
+		updatedAt: time.Now(),
+		value:     rate,
+		labels:    labels,
 	}
 }
 
@@ -1025,8 +1041,9 @@ func SetConsensusMonitorLastProcessed(monitorType string, timestamp int64) {
 		labeledValues[HLConsensusMonitorLastProcessedGauge] = make(map[string]labeledValue)
 	}
 	labeledValues[HLConsensusMonitorLastProcessedGauge][monitorType] = labeledValue{
-		value:  float64(timestamp),
-		labels: labels,
+		updatedAt: time.Now(),
+		value:     float64(timestamp),
+		labels:    labels,
 	}
 }
 
@@ -1068,8 +1085,9 @@ func SetValidatorLatency(validator string, latency float64) {
 		labeledValues[HLConsensusValidatorLatencyGauge] = make(map[string]labeledValue)
 	}
 	labeledValues[HLConsensusValidatorLatencyGauge][validatorAddr] = labeledValue{
-		value:  latency,
-		labels: labels,
+		updatedAt: time.Now(),
+		value:     latency,
+		labels:    labels,
 	}
 }
 
@@ -1093,8 +1111,9 @@ func SetValidatorLatencyRound(validator string, round int64) {
 		labeledValues[HLConsensusValidatorLatencyRoundGauge] = make(map[string]labeledValue)
 	}
 	labeledValues[HLConsensusValidatorLatencyRoundGauge][validatorAddr] = labeledValue{
-		value:  float64(round),
-		labels: labels,
+		updatedAt: time.Now(),
+		value:     float64(round),
+		labels:    labels,
 	}
 }
 
@@ -1118,8 +1137,9 @@ func SetValidatorLatencyEMA(validator string, ema float64) {
 		labeledValues[HLConsensusValidatorLatencyEMAGauge] = make(map[string]labeledValue)
 	}
 	labeledValues[HLConsensusValidatorLatencyEMAGauge][validatorAddr] = labeledValue{
-		value:  ema,
-		labels: labels,
+		updatedAt: time.Now(),
+		value:     ema,
+		labels:    labels,
 	}
 }
 
@@ -1143,8 +1163,9 @@ func SetP2PNonValPeerConnections(verified bool, count int64) {
 	}
 
 	labeledValues[HLP2PNonValPeerConnectionsGauge][verifiedStr] = labeledValue{
-		value:  float64(count),
-		labels: labels,
+		updatedAt: time.Now(),
+		value:     float64(count),
+		labels:    labels,
 	}
 }
 
@@ -1158,8 +1179,9 @@ func SetP2PNonValPeersTotal(total int64) {
 
 	// no labels for total peers metric
 	labeledValues[HLP2PNonValPeersTotalGauge]["total"] = labeledValue{
-		value:  float64(total),
-		labels: []attribute.KeyValue{},
+		updatedAt: time.Now(),
+		value:     float64(total),
+		labels:    []attribute.KeyValue{},
 	}
 }
 
@@ -1179,8 +1201,9 @@ func SetIncomingPeerLastSeen(peerIP string, ts float64) {
 	}
 
 	labeledValues[HLP2PIncomingPeerLastSeenGauge][peerIP] = labeledValue{
-		value:  ts,
-		labels: []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
+		updatedAt: time.Now(),
+		value:     ts,
+		labels:    []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
 	}
 }
 
@@ -1220,7 +1243,8 @@ func SetChildPeerConnected(peerIP string, verified bool, connected bool) {
 	}
 
 	labeledValues[HLP2PChildPeerConnectedGauge][key] = labeledValue{
-		value: val,
+		updatedAt: time.Now(),
+		value:     val,
 		labels: []attribute.KeyValue{
 			attribute.String("peer_ip", peerIP),
 			attribute.String("verified", verifiedStr),
@@ -1251,8 +1275,9 @@ func SetChildPeerConnections(peerIP string, count int) {
 	}
 
 	labeledValues[HLP2PChildPeerConnectionsGauge][peerIP] = labeledValue{
-		value:  float64(count),
-		labels: []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
+		updatedAt: time.Now(),
+		value:     float64(count),
+		labels:    []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
 	}
 }
 
@@ -1290,7 +1315,8 @@ func SetPeerLatency(peerIP, direction string, latencyMs float64) {
 	}
 
 	labeledValues[HLPeerLatencyGauge][key] = labeledValue{
-		value: latencyMs,
+		updatedAt: time.Now(),
+		value:     latencyMs,
 		labels: []attribute.KeyValue{
 			attribute.String("peer_ip", peerIP),
 			attribute.String("direction", direction),
@@ -1313,7 +1339,8 @@ func SetPeerReachable(peerIP, direction string, reachable bool) {
 	}
 
 	labeledValues[HLPeerReachableGauge][key] = labeledValue{
-		value: val,
+		updatedAt: time.Now(),
+		value:     val,
 		labels: []attribute.KeyValue{
 			attribute.String("peer_ip", peerIP),
 			attribute.String("direction", direction),
@@ -1388,8 +1415,9 @@ func SetParentPeer(peerIP string) {
 		labeledValues[HLNodeParentPeerGauge] = make(map[string]labeledValue)
 	}
 	labeledValues[HLNodeParentPeerGauge][peerIP] = labeledValue{
-		value:  1,
-		labels: []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
+		updatedAt: time.Now(),
+		value:     1,
+		labels:    []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
 	}
 }
 
@@ -1410,8 +1438,9 @@ func SetParentPeerTraffic(peerIP string, volume float64) {
 		labeledValues[HLNodeParentPeerTrafficGauge] = make(map[string]labeledValue)
 	}
 	labeledValues[HLNodeParentPeerTrafficGauge][peerIP] = labeledValue{
-		value:  volume,
-		labels: []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
+		updatedAt: time.Now(),
+		value:     volume,
+		labels:    []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
 	}
 }
 
@@ -1432,7 +1461,8 @@ func SetParentPeerLatency(peerIP string, latencyMs float64) {
 		labeledValues[HLNodeParentPeerLatencyGauge] = make(map[string]labeledValue)
 	}
 	labeledValues[HLNodeParentPeerLatencyGauge][peerIP] = labeledValue{
-		value:  latencyMs,
-		labels: []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
+		updatedAt: time.Now(),
+		value:     latencyMs,
+		labels:    []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
 	}
 }

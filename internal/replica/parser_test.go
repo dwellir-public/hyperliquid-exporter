@@ -9,9 +9,11 @@ import (
 // --- countJSONArrayElements ---
 
 func TestCountEmpty(t *testing.T) {
-	// starts at count=1, no commas found → returns 1
-	if got := countJSONArrayElements(json.RawMessage(`[]`)); got != 1 {
-		t.Fatalf("got %d, want 1", got)
+	if got := countJSONArrayElements(json.RawMessage(`[]`)); got != 0 {
+		t.Fatalf("got %d, want 0", got)
+	}
+	if got := countJSONArrayElements(json.RawMessage(` [ ] `)); got != 0 {
+		t.Fatalf("got %d, want 0 for whitespace-only array", got)
 	}
 }
 

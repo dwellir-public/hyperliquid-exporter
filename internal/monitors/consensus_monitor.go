@@ -681,6 +681,7 @@ func (m *ConsensusMonitor) monitorStatusLogs(ctx context.Context, errCh chan<- e
 	logger.InfoComponent("consensus", "Starting status log monitoring in: %s", statusDir)
 
 	var currentFile string
+	var openFile *os.File
 	var fileReader *bufio.Reader
 	isFirstRun := true
 
@@ -708,7 +709,9 @@ func (m *ConsensusMonitor) monitorStatusLogs(ctx context.Context, errCh chan<- e
 
 			// switch to new file if needed
 			if latestFile != currentFile {
-				if fileReader != nil {
+				if openFile != nil {
+					_ = openFile.Close()
+					openFile = nil
 					fileReader = nil
 				}
 
@@ -734,6 +737,7 @@ func (m *ConsensusMonitor) monitorStatusLogs(ctx context.Context, errCh chan<- e
 					logger.InfoComponent("consensus", "Not first run: reading entire status file %s", latestFile)
 				}
 
+				openFile = file
 				fileReader = bufio.NewReader(file)
 				currentFile = latestFile
 			}

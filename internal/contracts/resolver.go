@@ -331,8 +331,9 @@ func (r *Resolver) fetchWorker() {
 // gracefully shuts down resolver
 func (r *Resolver) Shutdown() {
 	logger.InfoComponent("contracts", "Shutting down contract resolver...")
+	// don't close fetchQueue: GetContractInfo may still send concurrently;
+	// workers exit via ctx cancellation instead
 	r.cancel()
-	close(r.fetchQueue)
 	r.wg.Wait()
 	logger.InfoComponent("contracts", "Contract resolver shutdown complete")
 }

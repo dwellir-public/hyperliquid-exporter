@@ -13,6 +13,8 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+
+	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 )
 
 // initializes the metrics system with the given configuration
@@ -107,6 +109,7 @@ func InitProvider(ctx context.Context, cfg MetricsConfig) error {
 
 	provider := sdkmetric.NewMeterProvider(opts...)
 
+	meterProvider = provider
 	otel.SetMeterProvider(provider)
 
 	meter = otel.Meter(
@@ -115,4 +118,19 @@ func InitProvider(ctx context.Context, cfg MetricsConfig) error {
 	)
 
 	return nil
+}
+
+var meterProvider *sdkmetric.MeterProvider
+
+// Shutdown flushes and stops the meter provider, exporting any metrics
+// accumulated since the last periodic OTLP push.
+func Shutdown() {
+	if meterProvider == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := meterProvider.Shutdown(ctx); err != nil {
+		logger.Error("Error shutting down meter provider: %v", err)
+	}
 }

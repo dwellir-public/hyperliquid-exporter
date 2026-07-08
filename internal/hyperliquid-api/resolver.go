@@ -180,12 +180,6 @@ func (r *Resolver) makeAPICall(ctx context.Context, endpoint string, request any
 	}
 
 	url := r.baseURL + endpoint
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(payload))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
 
 	// retry with exponential backoff
 	var resp *http.Response
@@ -201,6 +195,13 @@ func (r *Resolver) makeAPICall(ctx context.Context, endpoint string, request any
 			case <-time.After(backoff):
 			}
 		}
+
+		// rebuild the request each attempt: the body is consumed by Do
+		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
 
 		resp, err = r.client.Do(req)
 		if err != nil {

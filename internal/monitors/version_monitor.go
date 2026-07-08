@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
@@ -15,7 +16,13 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
 )
 
-var currentCommitHash string
+// written by the version monitor, read by the update checker
+var currentCommitHash atomic.Value // string
+
+func loadCommitHash() string {
+	s, _ := currentCommitHash.Load().(string)
+	return s
+}
 
 func StartVersionMonitor(ctx context.Context, cfg config.Config, errCh chan<- error) {
 	go func() {
@@ -92,11 +99,12 @@ func updateVersionInfo(ctx context.Context, cfg config.Config) error {
 
 		commitParts := strings.Split(commitLine, " ")
 		if len(commitParts) >= 2 {
-			currentCommitHash = strings.TrimSpace(commitParts[1])
+			currentCommitHash.Store(strings.TrimSpace(commitParts[1]))
 		}
 
-		metrics.SetSoftwareVersion(currentCommitHash, date)
-		logger.InfoComponent("system", "Detected hl-node version: commit=%s, date=%s", currentCommitHash, date)
+		hash := loadCommitHash()
+		metrics.SetSoftwareVersion(hash, date)
+		logger.InfoComponent("system", "Detected hl-node version: commit=%s, date=%s", hash, date)
 		return nil
 	}
 

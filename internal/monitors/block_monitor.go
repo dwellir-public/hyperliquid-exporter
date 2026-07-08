@@ -73,6 +73,7 @@ func StartBlockMonitor(ctx context.Context, cfg config.Config, errCh chan<- erro
 func monitorBlockState(ctx context.Context, cfg config.Config, errCh chan<- error, stateType string, dirName string) {
 	blockTimeDir := filepath.Join(cfg.NodeHome, "data", dirName)
 	var currentFile string
+	var openFile *os.File
 	var fileReader *bufio.Reader
 	isFirstRun := true
 
@@ -99,8 +100,10 @@ func monitorBlockState(ctx context.Context, cfg config.Config, errCh chan<- erro
 			// if a new file is found, switch to it
 			if latestFile != currentFile {
 				logger.InfoComponent("core", "Switching to new %s block time file: %s", stateType, latestFile)
-				if fileReader != nil {
-					fileReader = nil // allow the old file to be garbage collected
+				if openFile != nil {
+					_ = openFile.Close()
+					openFile = nil
+					fileReader = nil
 				}
 				file, err := os.Open(latestFile)
 				if err != nil {
@@ -123,6 +126,7 @@ func monitorBlockState(ctx context.Context, cfg config.Config, errCh chan<- erro
 					logger.InfoComponent("core", "Not first run: reading entire %s state file %s", stateType, latestFile)
 				}
 
+				openFile = file
 				fileReader = bufio.NewReader(file)
 				currentFile = latestFile
 				isFirstRun = false
@@ -245,6 +249,7 @@ func parseBlockTimeLine(ctx context.Context, line string, stateType string) erro
 func monitorLegacyBlockState(ctx context.Context, cfg config.Config, errCh chan<- error) {
 	blockTimeDir := filepath.Join(cfg.NodeHome, "data", "block_times")
 	var currentFile string
+	var openFile *os.File
 	var fileReader *bufio.Reader
 	isFirstRun := true
 
@@ -266,8 +271,10 @@ func monitorLegacyBlockState(ctx context.Context, cfg config.Config, errCh chan<
 			// if a new file is found, switch to it
 			if latestFile != currentFile {
 				logger.InfoComponent("core", "Switching to new block time file: %s", latestFile)
-				if fileReader != nil {
-					fileReader = nil // allow the old file to be garbage collected
+				if openFile != nil {
+					_ = openFile.Close()
+					openFile = nil
+					fileReader = nil
 				}
 				file, err := os.Open(latestFile)
 				if err != nil {
@@ -290,6 +297,7 @@ func monitorLegacyBlockState(ctx context.Context, cfg config.Config, errCh chan<
 					logger.InfoComponent("core", "Not first run: reading entire file %s", latestFile)
 				}
 
+				openFile = file
 				fileReader = bufio.NewReader(file)
 				currentFile = latestFile
 				isFirstRun = false

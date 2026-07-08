@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Peer map race crash, random labeled-metric eviction, empty API retry bodies, fd leaks on log rotation, validator latency staleness after midnight rollover
+
 ## [2.1.4] - 2026-03-31
 
 ### Added

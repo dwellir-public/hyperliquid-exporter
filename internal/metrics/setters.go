@@ -1406,6 +1406,18 @@ func SetPeerMonitoredCount(count int64) {
 	currentValues[HLPeerMonitoredCountGauge] = float64(count)
 }
 
+func AddPeerTrafficVolume(peerIP, direction string, volume float64) {
+	HLPeerTrafficVolumeCounter.Add(sharedCtx, volume,
+		api.WithAttributes(
+			attribute.String("peer_ip", peerIP),
+			attribute.String("direction", direction)))
+}
+
+func AddPeerActiveSeconds(peerIP string, seconds float64) {
+	HLPeerActiveSecondsCounter.Add(sharedCtx, seconds,
+		api.WithAttributes(attribute.String("peer_ip", peerIP)))
+}
+
 // Parent peer metric setters
 
 func SetParentPeer(peerIP string) {
@@ -1465,4 +1477,24 @@ func SetParentPeerLatency(peerIP string, latencyMs float64) {
 		value:     latencyMs,
 		labels:    []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
 	}
+}
+
+func AddParentPeerTenure(ip string, s float64) {
+	HLNodeParentPeerTenureTotalCounter.Add(sharedCtx, s,
+		api.WithAttributes(attribute.String("peer_ip", ip)))
+}
+
+func AddParentPeerDegraded(ip string, s float64) {
+	HLNodeParentPeerDegradedTotalCounter.Add(sharedCtx, s,
+		api.WithAttributes(attribute.String("peer_ip", ip)))
+}
+
+func IncrementParentPeerBlocks(ip string) {
+	HLNodeParentPeerBlocksTotalCounter.Add(sharedCtx, 1,
+		api.WithAttributes(attribute.String("peer_ip", ip)))
+}
+
+func AddParentPeerTrafficVolume(ip string, v float64) {
+	HLNodeParentPeerTrafficTotalCounter.Add(sharedCtx, v,
+		api.WithAttributes(attribute.String("peer_ip", ip)))
 }

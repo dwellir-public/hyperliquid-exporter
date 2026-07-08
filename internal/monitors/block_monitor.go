@@ -235,6 +235,7 @@ func parseBlockTimeLine(ctx context.Context, line string, stateType string) erro
 	if stateType == "fast" {
 		metrics.SetBlockHeight(int64(height))
 		metrics.SetLatestBlockTime(parsedTime.Unix())
+		quality.OnBlock(parsedTime)
 	}
 
 	// record apply duration with state type label
@@ -385,6 +386,7 @@ func parseLegacyBlockTimeLine(ctx context.Context, line string) error {
 		}
 	}
 	lastBlockTimes.Set("legacy", parsedTime)
+	quality.OnBlock(parsedTime)
 
 	// keep track of block heights for cleanup
 	var blockHeights []int64

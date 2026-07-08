@@ -29,7 +29,7 @@ func TestParentPeerMonitor_IdentifiesParent(t *testing.T) {
 	f := filepath.Join(dateDir, "6")
 	require.NoError(t, os.WriteFile(f, []byte(content), 0o644))
 
-	_, err := m.processFile(f, 0)
+	_, err := m.processFile(f, 0, false)
 	require.NoError(t, err)
 
 	assert.Equal(t, "162.55.245.102", m.currentParent)
@@ -56,7 +56,7 @@ func TestParentPeerMonitor_ParentSwitch(t *testing.T) {
 	f := filepath.Join(dateDir, "6")
 	require.NoError(t, os.WriteFile(f, []byte(content), 0o644))
 
-	_, err := m.processFile(f, 0)
+	_, err := m.processFile(f, 0, false)
 	require.NoError(t, err)
 
 	// last line wins: 10.0.0.2 is the parent
@@ -83,7 +83,7 @@ func TestParentPeerMonitor_IgnoresOutTraffic(t *testing.T) {
 	f := filepath.Join(dateDir, "6")
 	require.NoError(t, os.WriteFile(f, []byte(content), 0o644))
 
-	_, err := m.processFile(f, 0)
+	_, err := m.processFile(f, 0, false)
 	require.NoError(t, err)
 
 	assert.Equal(t, "10.0.0.1", parentIP)
@@ -109,7 +109,7 @@ func TestParentPeerMonitor_MalformedLines(t *testing.T) {
 	f := filepath.Join(dateDir, "6")
 	require.NoError(t, os.WriteFile(f, []byte(content), 0o644))
 
-	_, err := m.processFile(f, 0)
+	_, err := m.processFile(f, 0, false)
 	require.NoError(t, err)
 	assert.Equal(t, "10.0.0.1", parentIP)
 }

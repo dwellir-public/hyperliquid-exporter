@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const maxPeers = 128
+const maxPeers = 256
 
 // PeerDirection indicates how this node relates to a peer.
 type PeerDirection string
@@ -27,6 +27,7 @@ type Peer struct {
 	Port       int                    `json:"port,omitempty"`
 	Directions map[PeerDirection]bool `json:"directions"`
 	LastSeen   time.Time              `json:"last_seen"`
+	WasParent  bool                   `json:"was_parent,omitempty"`
 }
 
 // PeerSet is a thread-safe, bounded set of peers with JSON persistence.
@@ -77,6 +78,33 @@ func (ps *PeerSet) Register(ip string, dir PeerDirection) (string, bool) {
 		dirs[dir] = true
 	}
 	ps.peers[ip] = &Peer{IP: ip, Directions: dirs, LastSeen: time.Now()}
+	ps.gen++
+	ps.dirty = true
+	return evictedIP, evictedIP != ""
+}
+
+// MarkParent flags a peer as having served as parent, exempting it from
+// LRU eviction. Registers the IP first if unknown. Like Register, it
+// returns the evicted peer's IP when adding the parent displaced one.
+func (ps *PeerSet) MarkParent(ip string) (string, bool) {
+	if net.ParseIP(ip) == nil {
+		return "", false
+	}
+
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	var evictedIP string
+	p, exists := ps.peers[ip]
+	if !exists {
+		if len(ps.peers) >= maxPeers {
+			evictedIP = ps.evictOldest()
+		}
+		p = &Peer{IP: ip, Directions: map[PeerDirection]bool{}, LastSeen: time.Now()}
+		ps.peers[ip] = p
+	}
+
+	p.WasParent = true
 	ps.gen++
 	ps.dirty = true
 	return evictedIP, evictedIP != ""
@@ -224,20 +252,36 @@ func (ps *PeerSet) finishSave(gen uint64) {
 	}
 }
 
-// evictOldest removes the peer with the oldest LastSeen. Must be called with mu held.
+// evictOldest removes the peer with the oldest LastSeen, preferring
+// non-parent peers so ex-parents keep their quality history. Falls back to
+// oldest overall only if every peer is an ex-parent (so Register can't
+// fail). Must be called with mu held.
 func (ps *PeerSet) evictOldest() string {
-	var oldestIP string
-	var oldestTime time.Time
-
-	for ip, p := range ps.peers {
-		if oldestIP == "" || p.LastSeen.Before(oldestTime) {
-			oldestIP = ip
-			oldestTime = p.LastSeen
-		}
+	oldestIP := ps.oldest(true)
+	if oldestIP == "" {
+		oldestIP = ps.oldest(false)
 	}
 
 	if oldestIP != "" {
 		delete(ps.peers, oldestIP)
+	}
+	return oldestIP
+}
+
+// oldest returns the IP of the oldest-LastSeen peer. If skipParents is
+// true, ex-parent peers are excluded from consideration.
+func (ps *PeerSet) oldest(skipParents bool) string {
+	var oldestIP string
+	var oldestTime time.Time
+
+	for ip, p := range ps.peers {
+		if skipParents && p.WasParent {
+			continue
+		}
+		if oldestIP == "" || p.LastSeen.Before(oldestTime) {
+			oldestIP = ip
+			oldestTime = p.LastSeen
+		}
 	}
 	return oldestIP
 }

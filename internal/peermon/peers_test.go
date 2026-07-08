@@ -66,7 +66,7 @@ func TestPeerSet_EvictionOrder(t *testing.T) {
 	assert.Equal(t, maxPeers, ps.Len())
 
 	// Adding one more should evict 10.0.0.1 (oldest: base+1s)
-	evictedIP, evicted := ps.Register("10.0.0.200", Outbound)
+	evictedIP, evicted := ps.Register("10.0.1.1", Outbound)
 	assert.Equal(t, maxPeers, ps.Len())
 	assert.True(t, evicted)
 	assert.Equal(t, "10.0.0.1", evictedIP)
@@ -77,7 +77,7 @@ func TestPeerSet_EvictionOrder(t *testing.T) {
 		ips[p.IP] = true
 	}
 	assert.False(t, ips["10.0.0.1"], "oldest peer should be evicted")
-	assert.True(t, ips["10.0.0.200"], "new peer should be present")
+	assert.True(t, ips["10.0.1.1"], "new peer should be present")
 }
 
 func TestPeerSet_LoadSaveRoundTrip(t *testing.T) {
@@ -87,6 +87,7 @@ func TestPeerSet_LoadSaveRoundTrip(t *testing.T) {
 	_, _ = ps1.Register("10.0.0.1", Outbound)
 	_, _ = ps1.Register("10.0.0.2", Outbound)
 	ps1.UpdatePort("10.0.0.2", 4005)
+	ps1.MarkParent("10.0.0.2")
 	require.NoError(t, ps1.Save())
 
 	ps2 := NewPeerSet(dir)
@@ -102,12 +103,61 @@ func TestPeerSet_LoadSaveRoundTrip(t *testing.T) {
 	assert.True(t, ips["10.0.0.2"])
 
 	var port int
+	var wasParent1, wasParent2 bool
 	for _, p := range peers {
 		if p.IP == "10.0.0.2" {
 			port = p.Port
+			wasParent2 = p.WasParent
+		}
+		if p.IP == "10.0.0.1" {
+			wasParent1 = p.WasParent
 		}
 	}
 	assert.Equal(t, 4005, port)
+	assert.True(t, wasParent2, "10.0.0.2 should persist was_parent")
+	assert.False(t, wasParent1, "10.0.0.1 should not be marked parent")
+}
+
+func TestPeerSet_EvictionSkipsParents(t *testing.T) {
+	ps := NewPeerSet(t.TempDir())
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 1; i <= maxPeers; i++ {
+		ip := "10.0.0." + fmt.Sprint(i)
+		ps.mu.Lock()
+		ps.peers[ip] = &Peer{IP: ip, Directions: map[PeerDirection]bool{}, LastSeen: base.Add(time.Duration(i) * time.Second)}
+		ps.dirty = true
+		ps.mu.Unlock()
+	}
+	// 10.0.0.1 is the oldest peer but is an ex-parent, so it must be exempt.
+	ps.MarkParent("10.0.0.1")
+	assert.Equal(t, maxPeers, ps.Len())
+
+	evictedIP, evicted := ps.Register("10.0.1.1", Outbound)
+	assert.True(t, evicted)
+	assert.NotEqual(t, "10.0.0.1", evictedIP, "parent-flagged peer must not be evicted")
+	// Next-oldest non-parent is 10.0.0.2.
+	assert.Equal(t, "10.0.0.2", evictedIP)
+
+	peers := ps.All()
+	ips := make(map[string]bool)
+	for _, p := range peers {
+		ips[p.IP] = true
+	}
+	assert.True(t, ips["10.0.0.1"], "ex-parent peer must survive eviction")
+	assert.True(t, ips["10.0.1.1"], "new peer should be present")
+}
+
+func TestPeerSet_MarkParentRegistersUnknown(t *testing.T) {
+	ps := NewPeerSet(t.TempDir())
+
+	ps.MarkParent("10.0.0.50")
+
+	assert.Equal(t, 1, ps.Len())
+	peers := ps.All()
+	require.Len(t, peers, 1)
+	assert.Equal(t, "10.0.0.50", peers[0].IP)
+	assert.True(t, peers[0].WasParent)
 }
 
 func TestPeerSet_LoadMissingFile(t *testing.T) {

@@ -1,7 +1,7 @@
 ---
-last_edited: 2026-03-31
-version: 2.1.4
-commit: 5bfc9e9
+last_edited: 2026-07-08
+version: 2.2.0
+commit: 37891c7
 ---
 
 # Hyperliquid Exporter Metrics Reference
@@ -107,8 +107,12 @@ The `tcp_traffic` source is particularly important for non-validator nodes that 
 | `hl_peer_probes_total` | Counter | `peer_ip` | Total probe attempts per peer IP | `--peer-latency` |
 | `hl_peer_probe_failures_total` | Counter | `peer_ip` | Total failed probes per peer IP | `--peer-latency` |
 | `hl_peer_monitored_count` | Gauge | - | Number of peers in the monitored set | `--peer-latency` |
+| `hl_peer_traffic_volume_total` | Counter | `peer_ip`, `direction` | Cumulative tcp_traffic volume per peer and direction (raw units, unconfirmed) | `--peer-latency` |
+| `hl_peer_active_seconds_total` | Counter | `peer_ip` | Cumulative seconds a peer appeared in tcp_traffic logs with nonzero volume | `--peer-latency` |
 
 The `direction` label is one of `inbound`, `outbound`, or `unknown`. A peer seen in both directions gets two metric series with the same latency value (only one TCP probe is sent per IP). Direction is inferred from the discovery source: child peers and outgoing TCP traffic are `outbound`, incoming requests and inbound TCP traffic are `inbound`, and verified gossip RPCs where direction cannot be determined are `unknown`.
+
+**Note on `hl_peer_traffic_volume_total`:** same raw-unit caveat as `hl_node_parent_peer_traffic` below -- the value is summed directly from `tcp_traffic` log entries without any unit conversion. Use `increase(hl_peer_traffic_volume_total[...]) / increase(hl_peer_active_seconds_total[...])` to compare peers' average delivered traffic per active time; do not treat the raw cumulative value as a byte count until the unit is confirmed. These counters cover all discovered peers regardless of parent status -- they are an observational signal, not a capability signal, since an idle gossip peer produces near-zero traffic without that meaning it can't deliver.
 
 ## Parent Peer Metrics
 
@@ -121,10 +125,16 @@ Requires `--peer-latency` flag. Identifies the node's primary upstream peer (the
 | `hl_node_parent_peer_tenure_seconds` | Gauge | - | How long the current parent peer has held the role | `--peer-latency` |
 | `hl_node_parent_peer_switches_total` | Counter | - | Total number of parent peer changes | `--peer-latency` |
 | `hl_node_parent_peer_latency_ms` | Gauge | `peer_ip` | TCP connect latency to the parent peer in milliseconds | `--peer-latency` |
+| `hl_node_parent_peer_tenure_seconds_total` | Counter | `peer_ip` | Cumulative seconds each peer has served as parent | `--peer-latency` |
+| `hl_node_parent_peer_degraded_seconds_total` | Counter | `peer_ip` | Cumulative seconds of degraded block rate attributed to the parent at the time (see definition below) | `--peer-latency` |
+| `hl_node_parent_peer_blocks_total` | Counter | `peer_ip` | Blocks applied while each peer was parent | `--peer-latency` |
+| `hl_node_parent_peer_traffic_volume_total` | Counter | `peer_ip` | Cumulative inbound tcp_traffic volume delivered by each peer while parent (raw units) | `--peer-latency` |
 
-**Note on `hl_node_parent_peer_traffic`:** The value is taken directly from the Hyperliquid node's `tcp_traffic` logs. The exact unit is unknown but is probably GB, based on the magnitude of observed values (~1.2-1.9 per 30s interval for the parent peer). The parent peer identification relies on the ratio between peers, not the absolute value.
+**Note on `hl_node_parent_peer_traffic` and `hl_node_parent_peer_traffic_volume_total`:** The value is taken directly from the Hyperliquid node's `tcp_traffic` logs. The exact unit is unknown but is probably GB, based on the magnitude of observed values (~1.2-1.9 per 30s interval for the parent peer). The parent peer identification relies on the ratio between peers, not the absolute value. `hl_node_parent_peer_traffic_volume_total` accumulates the same raw, unit-unconfirmed values reported by the point-in-time gauge -- no conversion is applied.
 
 When the parent changes, the old peer's labeled metrics are removed and the switch counter is incremented. A warning is logged if the runner-up peer has >10% of the top peer's traffic volume, indicating potential ambiguity.
+
+**Degraded time definition (`hl_node_parent_peer_degraded_seconds_total`):** a peer's tenure is counted as degraded while the short-window block rate falls below 80% of the long-run baseline rate (rate-band detection: fast EMA of inter-block gaps vs. a slow EMA baseline), or while blocks stall outright (no block for longer than the greater of a floor and 4x the baseline gap). The rate-band verdict requires a warmup period (no degraded verdicts on a fresh baseline) so it does not misfire immediately after an exporter restart or parent switch. `1 - increase(hl_node_parent_peer_degraded_seconds_total[...]) / increase(hl_node_parent_peer_tenure_seconds_total[...])` gives the fraction of a peer's tenure the block rate kept up.
 
 ## Software Version Metrics
 

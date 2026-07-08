@@ -2,9 +2,15 @@
 
 All notable changes to the Hyperliquid Exporter will be documented in this file.
 
-## [2.1.4]
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [2.1.4] - 2026-03-31
 
 ### Added
+
 - Parent peer identification: new monitor that analyzes `tcp_traffic` byte volumes to identify the node's primary upstream peer (the one delivering all block data)
 - New metrics (all require `--peer-latency`):
   - `hl_node_parent_peer` — info gauge identifying the current parent peer IP
@@ -14,36 +20,42 @@ All notable changes to the Hyperliquid Exporter will be documented in this file.
   - `hl_node_parent_peer_latency_ms` — dedicated TCP probe latency for the parent peer
 - Warning log when parent peer selection is ambiguous (runner-up has >10% of the top peer's bytes)
 
-## [2.1.3]
+## [2.1.3] - 2026-03-31
 
 ### Added
+
 - Direction labeling for peer latency metrics: `hl_peer_latency_ms` and `hl_peer_reachable` now include a `direction` label (`inbound`, `outbound`, or `unknown`)
   - A peer seen in both directions gets two Prometheus series with the same latency value (one TCP probe per IP)
   - Direction is inferred from the discovery source: child peers and outgoing TCP traffic are outbound, incoming requests and inbound TCP traffic are inbound
 
 ### Changed
+
 - Peer set capacity increased from 100 to 128
 - `peermon.Register` now accepts a `PeerDirection` parameter; `Peer` struct tracks a set of observed directions
 
-## [2.1.2]
+## [2.1.2] - 2026-03-31
 
 ### Added
+
 - Outbound peer discovery from `tcp_traffic` logs: non-validator nodes with no inbound connections now automatically discover peers for latency monitoring
 - New outbound peers monitor extracts peer IPs from the node's TCP traffic data, logging each discovered peer on first sight
 
 ### Changed
+
 - `peermon.Register` is now a direct mutex-protected call instead of a buffered channel send, removing the 256-entry buffer limit
 
-## [2.1.1]
+## [2.1.1] - 2026-03-30
 
 ### Changed
+
 - Peer latency prober now tries ports 3001, 3002, 443, 80 before the 4000-4010 range, improving reachability in environments with restrictive firewall rules
 
-## [2.1.0]
+## [2.1.0] - 2026-03-30
 
 Initial release post-fork.
 
 ### Added
+
 - Peer latency monitoring (`--peer-latency`): TCP-based latency probes against all known peers once per minute
 - New metrics: `hl_peer_latency_ms`, `hl_peer_reachable`, `hl_peer_probes_total`, `hl_peer_probe_failures_total`, `hl_peer_monitored_count`
 - Persistent peer set (`.hyperliquid-exporter/peers.json`) survives restarts with LRU eviction at 100 peers
@@ -55,6 +67,7 @@ Initial release post-fork.
 - Test coverage across cache, config, metrics, replica, utils, abci, logger, hyperliquid-api, contracts, and monitors
 
 ### Changed
+
 - Binary renamed from `hl_exporter` to `hyperliquid-exporter` (cmd directory, Dockerfile, CI, docs)
 - Improved gossip monitor line tailer and disconnect state preservation
 - Upgraded to Go 1.26.1 with dependency updates
@@ -68,30 +81,35 @@ Initial release post-fork.
 ### Added
 
 #### Consensus Monitoring
+
 - Realtime consensus monitoring with 20+ new consensus metrics
 - Validator connectivity tracking with heartbeats
-- QC participation 
+- QC participation
 - TC tracking
 - Validator latency measurements
 
 #### HyperCore Tx and order metrics
+
 - Moved to direct msgpack parsing (previously used binary)
 - Monitor tps, orders per second
 - See breakdown of order types
 
 #### EVM
+
 - Comprehensive gas metrics (base fee, priority fee, utilization)
 - Per-contract transaction tracking with configurable limits
 - High gas block detection and tracking
 - EVM account growth monitoring
 
 #### System Monitoring
+
 - Go runtime memory metrics (heap, goroutines, system memory)
 - P2P network peer connection tracking
 - LRU caching system for improved performance
 - Processing latency and throughput metrics
 
 #### New CLI Flags
+
 - `--replica-metrics` - Enable replica command transaction metrics
 - `--contract-metrics` - Enable per-contract transaction metrics
 - `--contract-metrics-limit` - Maximum contract labels to retain (default: 20)
@@ -100,6 +118,7 @@ Initial release post-fork.
 ### Changed
 
 #### Metrics Organization (BREAKING CHANGES)
+
 - All metrics reorganized with categorical prefixes:
   - `hl_core_*` - Core blockchain metrics
   - `hl_consensus_*` - Consensus-related metrics
@@ -108,6 +127,7 @@ Initial release post-fork.
 - Total metrics increased from 20 to 82 (310% increase)
 
 #### Complete List of Renamed Metrics
+
 - `hl_block_height` → `hl_core_block_height`
 - `hl_block_time_milliseconds` → `hl_core_block_time_milliseconds`
 - `hl_latest_block_time` → `hl_core_latest_block_time`
@@ -128,12 +148,21 @@ Initial release post-fork.
 ..with addition of many more brand new metrics
 
 #### CLI Flags
+
 - `--enable-otlp` renamed to `--otlp`
 - `--evm` renamed to `--evm-metrics`
 - `--otlp-endpoint` default value removed (now required when OTLP enabled)
 
 ### Removed
+
 - `--enable-prom` flag (Prometheus now always enabled)
 - `--disable-prom` flag (Prometheus now always enabled)
 - `hl_evm_transactions_total` metric (replaced by `hl_evm_tx_type_total`)
 
+[Unreleased]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.1.4...HEAD
+[2.1.4]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.1.3...v2.1.4
+[2.1.3]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.1.2...v2.1.3
+[2.1.2]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.1.1...v2.1.2
+[2.1.1]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.1.0...v2.1.1
+[2.1.0]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.0.0...v2.1.0
+[2.0.0]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v1.2.5...v2.0.0

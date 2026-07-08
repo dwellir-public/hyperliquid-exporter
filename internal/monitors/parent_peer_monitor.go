@@ -46,11 +46,13 @@ func (m *ParentPeerMonitor) monitor(ctx context.Context) {
 	ticker := time.NewTicker(gossipPollInterval)
 	defer ticker.Stop()
 
-	// seed from latest file on startup
+	// seed from latest file on startup; suppress volume counter emission since
+	// Prometheus already recorded these samples pre-restart
 	if filePath, err := getLatestHourlyLogFile(m.dir); err == nil && filePath != "" {
 		m.lastFile = filePath
 		logger.InfoComponent("parent-peer", "Processing %s", filePath)
-		if newOffset, err := m.processFile(filePath, 0); err != nil {
+		newOffset, err := m.processFile(filePath, 0, true)
+		if err != nil {
 			logger.DebugComponent("parent-peer", "Error processing tcp_traffic: %v", err)
 		} else {
 			m.lastOffset = newOffset
@@ -79,14 +81,16 @@ func (m *ParentPeerMonitor) poll() {
 		m.lastOffset = 0
 	}
 
-	if _, err := m.processFile(filePath, m.lastOffset); err != nil {
+	if _, err := m.processFile(filePath, m.lastOffset, false); err != nil {
 		logger.DebugComponent("parent-peer", "Error reading tcp_traffic: %v", err)
 	}
+
+	quality.Flush()
 }
 
 // processFile reads tcp_traffic lines and identifies the parent peer by max inbound bytes.
 // Each line is an interval snapshot; the last line's winner is used as the most recent state.
-func (m *ParentPeerMonitor) processFile(filePath string, offset int64) (int64, error) {
+func (m *ParentPeerMonitor) processFile(filePath string, offset int64, seeding bool) (int64, error) {
 	var bestIP, runnerIP string
 	var bestBytes, runnerBytes float64
 
@@ -97,6 +101,12 @@ func (m *ParentPeerMonitor) processFile(filePath string, offset int64) (int64, e
 			bestBytes = topBytes
 			runnerIP = secondIP
 			runnerBytes = secondBytes
+
+			// top inbound peer per line is the parent; suppress during the
+			// startup seed pass to avoid double-counting pre-restart samples
+			if !seeding {
+				metrics.AddParentPeerTrafficVolume(topIP, topBytes)
+			}
 		}
 	})
 	if err != nil {
@@ -177,6 +187,7 @@ func (m *ParentPeerMonitor) updateParent(ip string, bytes float64) {
 		}
 		m.currentParent = ip
 		m.parentSince = now
+		quality.SetParent(ip)
 
 		if m.setParentPeer != nil {
 			m.setParentPeer(ip)

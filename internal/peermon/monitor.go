@@ -45,6 +45,11 @@ func New(dataDir string) *Monitor {
 // Safe to call from any goroutine.
 func (m *Monitor) SetParentPeer(ip string) {
 	m.parentIP.Store(ip)
+	evictedIP, evicted := m.peers.MarkParent(ip)
+	if evicted {
+		removePeerMetrics(evictedIP)
+	}
+	setPeerCount(int64(m.peers.Len()))
 }
 
 // Register adds a peer IP to the monitored set with a direction.

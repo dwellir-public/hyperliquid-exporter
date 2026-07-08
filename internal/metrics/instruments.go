@@ -130,13 +130,19 @@ var (
 	HLPeerProbesTotalCounter   api.Int64Counter
 	HLPeerProbeFailuresCounter api.Int64Counter
 	HLPeerMonitoredCountGauge  api.Float64ObservableGauge
+	HLPeerTrafficVolumeCounter api.Float64Counter
+	HLPeerActiveSecondsCounter api.Float64Counter
 
 	// Parent peer metrics
-	HLNodeParentPeerGauge           api.Float64ObservableGauge
-	HLNodeParentPeerTrafficGauge    api.Float64ObservableGauge
-	HLNodeParentPeerTenureGauge     api.Float64ObservableGauge
-	HLNodeParentPeerSwitchesCounter api.Int64Counter
-	HLNodeParentPeerLatencyGauge    api.Float64ObservableGauge
+	HLNodeParentPeerGauge                api.Float64ObservableGauge
+	HLNodeParentPeerTrafficGauge         api.Float64ObservableGauge
+	HLNodeParentPeerTenureGauge          api.Float64ObservableGauge
+	HLNodeParentPeerSwitchesCounter      api.Int64Counter
+	HLNodeParentPeerLatencyGauge         api.Float64ObservableGauge
+	HLNodeParentPeerTenureTotalCounter   api.Float64Counter
+	HLNodeParentPeerDegradedTotalCounter api.Float64Counter
+	HLNodeParentPeerBlocksTotalCounter   api.Int64Counter
+	HLNodeParentPeerTrafficTotalCounter  api.Float64Counter
 
 	// monitor health metrics
 	HLConsensusMonitorLastProcessedGauge api.Int64ObservableGauge
@@ -948,6 +954,22 @@ func createInstruments() error {
 		return fmt.Errorf("failed to create peer monitored count gauge: %w", err)
 	}
 
+	HLPeerTrafficVolumeCounter, err = meter.Float64Counter(
+		"hl_peer_traffic_volume_total",
+		api.WithDescription("Cumulative tcp_traffic volume per peer and direction (raw units from tcp_traffic logs, unit unconfirmed)"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create peer traffic volume counter: %w", err)
+	}
+
+	HLPeerActiveSecondsCounter, err = meter.Float64Counter(
+		"hl_peer_active_seconds_total",
+		api.WithDescription("Cumulative seconds a peer appeared in tcp_traffic logs with nonzero volume"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create peer active seconds counter: %w", err)
+	}
+
 	// Parent peer metrics
 	HLNodeParentPeerGauge, err = meter.Float64ObservableGauge(
 		"hl_node_parent_peer",
@@ -987,6 +1009,38 @@ func createInstruments() error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create parent peer latency gauge: %w", err)
+	}
+
+	HLNodeParentPeerTenureTotalCounter, err = meter.Float64Counter(
+		"hl_node_parent_peer_tenure_seconds_total",
+		api.WithDescription("Cumulative seconds each peer has served as parent"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create parent peer tenure total counter: %w", err)
+	}
+
+	HLNodeParentPeerDegradedTotalCounter, err = meter.Float64Counter(
+		"hl_node_parent_peer_degraded_seconds_total",
+		api.WithDescription("Cumulative seconds of degraded block rate attributed to the parent at the time"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create parent peer degraded total counter: %w", err)
+	}
+
+	HLNodeParentPeerBlocksTotalCounter, err = meter.Int64Counter(
+		"hl_node_parent_peer_blocks_total",
+		api.WithDescription("Blocks applied while each peer was parent"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create parent peer blocks total counter: %w", err)
+	}
+
+	HLNodeParentPeerTrafficTotalCounter, err = meter.Float64Counter(
+		"hl_node_parent_peer_traffic_volume_total",
+		api.WithDescription("Cumulative inbound tcp_traffic volume delivered by each peer while parent (raw units)"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create parent peer traffic volume total counter: %w", err)
 	}
 
 	return nil

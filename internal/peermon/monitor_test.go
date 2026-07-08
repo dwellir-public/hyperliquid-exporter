@@ -191,7 +191,7 @@ func TestMonitor_RegisterEvictsOldest(t *testing.T) {
 		count = v
 	}
 
-	m.Register("10.0.0.200", Outbound)
+	m.Register("10.0.1.1", Outbound)
 
 	assert.Equal(t, "10.0.0.1", removed)
 	assert.Equal(t, int64(maxPeers), count)

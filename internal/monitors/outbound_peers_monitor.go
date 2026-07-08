@@ -9,8 +9,12 @@ import (
 
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/peermon"
 )
+
+// timeLayout matches the tcp_traffic line timestamp format.
+const timeLayout = "2006-01-02T15:04:05.999999999"
 
 type OutboundPeersMonitor struct {
 	dir          string
@@ -18,13 +22,19 @@ type OutboundPeersMonitor struct {
 	lastOffset   int64
 	registerPeer func(string, peermon.PeerDirection)
 	seen         map[string]struct{}
+	lastLineTS   time.Time
+
+	addTrafficVolume func(peerIP, direction string, volume float64)
+	addActiveSeconds func(peerIP string, seconds float64)
 }
 
 func NewOutboundPeersMonitor(cfg *config.Config, registerPeer func(string, peermon.PeerDirection)) *OutboundPeersMonitor {
 	return &OutboundPeersMonitor{
-		dir:          filepath.Join(cfg.NodeHome, "data", "tcp_traffic", "hourly"),
-		registerPeer: registerPeer,
-		seen:         make(map[string]struct{}),
+		dir:              filepath.Join(cfg.NodeHome, "data", "tcp_traffic", "hourly"),
+		registerPeer:     registerPeer,
+		seen:             make(map[string]struct{}),
+		addTrafficVolume: metrics.AddPeerTrafficVolume,
+		addActiveSeconds: metrics.AddPeerActiveSeconds,
 	}
 }
 
@@ -48,7 +58,7 @@ func (m *OutboundPeersMonitor) monitor(ctx context.Context) {
 	if filePath, err := getLatestHourlyLogFile(m.dir); err == nil && filePath != "" {
 		m.lastFile = filePath
 		logger.InfoComponent("gossip", "Outbound peer monitor processing %s", filePath)
-		if newOffset, err := m.processFile(filePath, 0); err != nil {
+		if newOffset, err := m.processFile(filePath, 0, true); err != nil {
 			logger.DebugComponent("gossip", "Error processing tcp_traffic: %v", err)
 		} else {
 			m.lastOffset = newOffset
@@ -77,7 +87,7 @@ func (m *OutboundPeersMonitor) poll() {
 		m.lastOffset = 0
 	}
 
-	if _, err := m.processFile(filePath, m.lastOffset); err != nil {
+	if _, err := m.processFile(filePath, m.lastOffset, false); err != nil {
 		logger.DebugComponent("gossip", "Error reading tcp_traffic: %v", err)
 	}
 }
@@ -87,9 +97,13 @@ type peerEntry struct {
 	dir peermon.PeerDirection
 }
 
-// processFile reads tcp_traffic lines and extracts peer IPs with direction.
+// processFile reads tcp_traffic lines, extracts peer IPs with direction, and
+// accumulates per-peer traffic volume and active-seconds counters. During the
+// startup seed pass (seeding=true), counter emission is suppressed to avoid
+// double-counting samples Prometheus already recorded before the restart;
+// peer discovery and lastLineTS tracking still happen.
 // Format: ["timestamp",[[["In"|"Out","IP",port],bytes], ...]]
-func (m *OutboundPeersMonitor) processFile(filePath string, offset int64) (int64, error) {
+func (m *OutboundPeersMonitor) processFile(filePath string, offset int64, seeding bool) (int64, error) {
 	batch := make(map[peerEntry]struct{})
 
 	newOffset, err := readCommittedLines(filePath, offset, func(line []byte) {
@@ -102,6 +116,9 @@ func (m *OutboundPeersMonitor) processFile(filePath string, offset int64) (int64
 		if err := json.Unmarshal(entry[1], &flows); err != nil {
 			return
 		}
+
+		volumes := make(map[peerEntry]float64)
+		active := make(map[string]struct{})
 
 		for _, flow := range flows {
 			// each flow: [["In"|"Out", "IP", port], bytes]
@@ -122,6 +139,42 @@ func (m *OutboundPeersMonitor) processFile(filePath string, offset int64) (int64
 			}
 			dir := trafficDirection(dirStr)
 			batch[peerEntry{ip, dir}] = struct{}{}
+
+			var volume float64
+			if err := json.Unmarshal(pair[1], &volume); err != nil {
+				continue
+			}
+			volumes[peerEntry{ip, dir}] += volume
+			if volume > 0 {
+				active[ip] = struct{}{}
+			}
+		}
+
+		var ts time.Time
+		var tsOK bool
+		var timestamp string
+		if err := json.Unmarshal(entry[0], &timestamp); err == nil {
+			if parsed, err := time.Parse(timeLayout, timestamp); err == nil {
+				ts = parsed
+				tsOK = true
+			}
+		}
+
+		if !seeding {
+			if tsOK && !m.lastLineTS.IsZero() {
+				delta := ts.Sub(m.lastLineTS).Seconds()
+				delta = clampDelta(delta)
+				for ip := range active {
+					m.addActiveSeconds(ip, delta)
+				}
+			}
+			for pe, volume := range volumes {
+				m.addTrafficVolume(pe.ip, string(pe.dir), volume)
+			}
+		}
+
+		if tsOK {
+			m.lastLineTS = ts
 		}
 	})
 	if err != nil {
@@ -134,6 +187,16 @@ func (m *OutboundPeersMonitor) processFile(filePath string, offset int64) (int64
 
 	m.lastOffset = newOffset
 	return newOffset, nil
+}
+
+func clampDelta(seconds float64) float64 {
+	if seconds < 0 {
+		return 0
+	}
+	if seconds > maxAccountGapSeconds {
+		return maxAccountGapSeconds
+	}
+	return seconds
 }
 
 func (m *OutboundPeersMonitor) register(ip string, dir peermon.PeerDirection) {

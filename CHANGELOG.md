@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Upgraded dependencies:
+  - Go 1.26.4
+  - golangci-lint 2.12.2
+  - General library update
 - Peer set capacity increased from 128 to 256
 - Traffic counter accounting skips the startup replay of the current hourly `tcp_traffic` file, so `increase()` windows spanning an exporter restart no longer double-count pre-restart traffic
 

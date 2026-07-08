@@ -247,7 +247,7 @@ func TestProcessGossipFile_TruncationResetsOffset(t *testing.T) {
 	require.NoError(t, err)
 	assert.Greater(t, offset1, int64(0))
 
-	require.NoError(t, os.WriteFile(f, []byte(fmt.Sprintf(`["%s",["incoming request","10.0.0.8:9999",false]]`+"\n", recentTS(5))), 0o644))
+	require.NoError(t, os.WriteFile(f, fmt.Appendf(nil, `["%s",["incoming request","10.0.0.8:9999",false]]`+"\n", recentTS(5)), 0o644))
 
 	offset2, err := m.processGossipFile(f, offset1)
 	require.NoError(t, err)

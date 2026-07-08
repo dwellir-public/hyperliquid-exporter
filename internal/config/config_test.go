@@ -6,8 +6,6 @@ import (
 	"time"
 )
 
-func boolPtr(b bool) *bool { return &b }
-
 // chdir to a temp dir so godotenv.Load() finds no .env file
 func isolateEnv(t *testing.T) {
 	t.Helper()
@@ -112,7 +110,7 @@ func TestValidatorRTTTrue(t *testing.T) {
 	t.Setenv("BINARY_HOME", "")
 	t.Setenv("NODE_BINARY", "")
 
-	cfg := LoadConfig(&Flags{EnableValidatorRTT: boolPtr(true)})
+	cfg := LoadConfig(&Flags{EnableValidatorRTT: new(true)})
 	if !cfg.EnableValidatorRTT {
 		t.Error("EnableValidatorRTT should be true")
 	}
@@ -125,7 +123,7 @@ func TestValidatorRTTFalse(t *testing.T) {
 	t.Setenv("BINARY_HOME", "")
 	t.Setenv("NODE_BINARY", "")
 
-	cfg := LoadConfig(&Flags{EnableValidatorRTT: boolPtr(false)})
+	cfg := LoadConfig(&Flags{EnableValidatorRTT: new(false)})
 	if cfg.EnableValidatorRTT {
 		t.Error("EnableValidatorRTT should be false")
 	}

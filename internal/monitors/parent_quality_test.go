@@ -59,7 +59,7 @@ func TestParentQuality_RateBand(t *testing.T) {
 			q.SetParent("A")
 
 			// warm up past emaWarmupBlocks with steady gaps
-			for i := 0; i < emaWarmupBlocks+1; i++ {
+			for range emaWarmupBlocks + 1 {
 				clock.advance(tc.steadyGap)
 				q.OnBlock(clock.t)
 			}
@@ -69,7 +69,7 @@ func TestParentQuality_RateBand(t *testing.T) {
 			}
 
 			// apply (or continue) the gap pattern under test
-			for i := 0; i < 100; i++ {
+			for range 100 {
 				clock.advance(tc.slowGap)
 				q.OnBlock(clock.t)
 			}
@@ -151,7 +151,7 @@ func TestParentQuality_WarmupSuppression(t *testing.T) {
 		q.SetParent("A")
 
 		// fewer than emaWarmupBlocks samples, alternating slow/fast gaps
-		for i := 0; i < emaWarmupBlocks-1; i++ {
+		for i := range emaWarmupBlocks - 1 {
 			gap := time.Second
 			if i%2 == 0 {
 				gap = 3 * time.Second

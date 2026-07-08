@@ -44,7 +44,7 @@ func TestMonitor_RegisterHighVolume(t *testing.T) {
 	m := New(t.TempDir())
 
 	// simulate thousands of registrations for 5 unique IPs (like tcp_traffic startup)
-	for i := 0; i < 5000; i++ {
+	for i := range 5000 {
 		m.Register("10.0.0."+strconv.Itoa(i%5+1), Outbound)
 	}
 

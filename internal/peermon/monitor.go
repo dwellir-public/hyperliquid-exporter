@@ -122,12 +122,10 @@ func (m *Monitor) startProbeCycle(ctx context.Context) (started bool, skipped bo
 		return false, false
 	}
 
-	m.probeWG.Add(1)
-	go func() {
-		defer m.probeWG.Done()
+	m.probeWG.Go(func() {
 		defer m.probeRunning.Store(false)
 		m.runProbe(ctx, peers)
-	}()
+	})
 
 	return true, false
 }

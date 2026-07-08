@@ -3,6 +3,7 @@ package peermon
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
@@ -145,9 +146,7 @@ func (ps *PeerSet) All() []Peer {
 func copyPeer(p *Peer) Peer {
 	c := *p
 	c.Directions = make(map[PeerDirection]bool, len(p.Directions))
-	for k, v := range p.Directions {
-		c.Directions[k] = v
-	}
+	maps.Copy(c.Directions, p.Directions)
 	return c
 }
 

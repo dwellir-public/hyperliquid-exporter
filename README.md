@@ -1,6 +1,6 @@
 # Hyperliquid Exporter
 
-A Go-based exporter that collects and exposes metrics for Hyperliquid node operators. This exporter produces metrics for HyperCore, HyperEVM, and HyperBFT, covering block production, transaction flow, validator performance, stake distribution, EVM activity, and consensus events. For a full list of metrics, see [docs/metrics.md](docs/metrics.md).
+A Go-based exporter that collects and exposes metrics for Hyperliquid node operators. This exporter produces metrics for HyperCore, HyperEVM, and HyperBFT, covering block production, transaction flow, validator performance, stake distribution, EVM activity, and consensus events. For a full list of metrics, see [docs/metrics-overview.md](docs/metrics-overview.md).
 
 ## Quick Start
 
@@ -70,4 +70,4 @@ In production, `hyperliquid-exporter` is deployed as a systemd service via the
 
 ## Documentation
 
-- [Metrics Reference](docs/metrics.md) - All metrics with descriptions and labels
+- [Metrics Reference](docs/metrics-overview.md) - All metrics with descriptions and labels

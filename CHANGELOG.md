@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Per-peer traffic counters (require `--peer-latency`): `hl_peer_traffic_volume_total{peer_ip,direction}` and `hl_peer_active_seconds_total{peer_ip}` accumulate each peer's `tcp_traffic` volume (raw units, unconfirmed) and active time
+- Parent tenure quality counters (require `--peer-latency`): `hl_node_parent_peer_tenure_seconds_total`, `hl_node_parent_peer_degraded_seconds_total`, `hl_node_parent_peer_blocks_total`, and `hl_node_parent_peer_traffic_volume_total`, all labeled `peer_ip`, attribute parent service time, degraded block-rate time, applied blocks, and delivered volume to whichever peer was parent
+- Degraded block-rate detection: fast/slow EMA rate-band (short-window block rate below 80% of the long-run baseline) plus outright-stall detection, with a warmup period to avoid false verdicts after restarts
+- `was_parent` flag persisted in `peers.json`: peers that have served as parent are exempt from LRU eviction so their quality history survives peer churn
+
+### Changed
+
+- Peer set capacity increased from 128 to 256
+- Traffic counter accounting skips the startup replay of the current hourly `tcp_traffic` file, so `increase()` windows spanning an exporter restart no longer double-count pre-restart traffic
+
 ### Removed
 
 - `Dockerfile` and `docker-compose.yml`: deployment is handled by the [hyperliquid-metrics-exporter Juju charm](https://github.com/dwellir-public/ops/tree/main/juju/charms/hyperliquid-metrics-exporter), which runs the binary as a systemd service

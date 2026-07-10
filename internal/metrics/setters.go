@@ -1436,7 +1436,7 @@ func SetParentPeer(peerIP string) {
 func RemoveParentPeer(peerIP string) {
 	metricsMutex.Lock()
 	defer metricsMutex.Unlock()
-	for _, gauge := range []api.Observable{HLNodeParentPeerGauge, HLNodeParentPeerTrafficGauge, HLNodeParentPeerLatencyGauge} {
+	for _, gauge := range []api.Observable{HLNodeParentPeerGauge, HLNodeParentPeerTrafficGauge, HLNodeParentPeerLatencyGauge, HLNodeParentPeerBlockLagGauge} {
 		if m, exists := labeledValues[gauge]; exists {
 			delete(m, peerIP)
 		}
@@ -1475,6 +1475,19 @@ func SetParentPeerLatency(peerIP string, latencyMs float64) {
 	labeledValues[HLNodeParentPeerLatencyGauge][peerIP] = labeledValue{
 		updatedAt: time.Now(),
 		value:     latencyMs,
+		labels:    []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
+	}
+}
+
+func SetParentPeerBlockLag(peerIP string, seconds float64) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	if _, exists := labeledValues[HLNodeParentPeerBlockLagGauge]; !exists {
+		labeledValues[HLNodeParentPeerBlockLagGauge] = make(map[string]labeledValue)
+	}
+	labeledValues[HLNodeParentPeerBlockLagGauge][peerIP] = labeledValue{
+		updatedAt: time.Now(),
+		value:     seconds,
 		labels:    []attribute.KeyValue{attribute.String("peer_ip", peerIP)},
 	}
 }

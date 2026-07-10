@@ -240,3 +240,66 @@ func TestMonitor_StartSyncsLoadedPeerCount(t *testing.T) {
 	cancel()
 	<-done
 }
+
+func TestMonitor_ProbeAllBacksOffUnreachable(t *testing.T) {
+	initTestMetrics(t)
+	m := New(t.TempDir())
+
+	restoreDial := dialAddr
+	restoreTimeout := peerProbeTimeout
+	t.Cleanup(func() {
+		dialAddr = restoreDial
+		peerProbeTimeout = restoreTimeout
+	})
+
+	peerProbeTimeout = 20 * time.Millisecond
+	dialAddr = func(ctx context.Context, addr string) (net.Conn, error) {
+		return nil, net.ErrClosed
+	}
+
+	m.peers.mu.Lock()
+	m.peers.peers["10.0.0.1"] = &Peer{IP: "10.0.0.1", Directions: map[PeerDirection]bool{}, ConsecFails: failBackoffThreshold, LastProbe: time.Now()}
+	m.peers.peers["10.0.0.2"] = &Peer{IP: "10.0.0.2", Directions: map[PeerDirection]bool{}, ConsecFails: failBackoffThreshold, LastProbe: time.Now().Add(-2 * backoffProbeInterval)}
+	m.peers.peers["10.0.0.3"] = &Peer{IP: "10.0.0.3", Directions: map[PeerDirection]bool{}}
+	m.peers.mu.Unlock()
+
+	m.probeAll(context.Background(), m.peers.All())
+
+	fails := map[string]int{}
+	for _, p := range m.peers.All() {
+		fails[p.IP] = p.ConsecFails
+	}
+	// 10.0.0.1 is in backoff and skipped; the other two are probed and fail
+	assert.Equal(t, failBackoffThreshold, fails["10.0.0.1"])
+	assert.Equal(t, failBackoffThreshold+1, fails["10.0.0.2"])
+	assert.Equal(t, 1, fails["10.0.0.3"])
+}
+
+func TestMonitor_ExpireStaleRemovesMetrics(t *testing.T) {
+	initTestMetrics(t)
+	m := New(t.TempDir())
+
+	stale := time.Now().Add(-peerTTL - time.Hour)
+	m.peers.mu.Lock()
+	m.peers.peers["10.0.0.1"] = &Peer{IP: "10.0.0.1", Directions: map[PeerDirection]bool{}, LastSeen: stale, ConsecFails: failBackoffThreshold}
+	m.peers.peers["10.0.0.2"] = &Peer{IP: "10.0.0.2", Directions: map[PeerDirection]bool{}, LastSeen: time.Now()}
+	m.peers.mu.Unlock()
+
+	restoreRemove := removePeerMetrics
+	restoreCount := setPeerCount
+	t.Cleanup(func() {
+		removePeerMetrics = restoreRemove
+		setPeerCount = restoreCount
+	})
+
+	var removed []string
+	var count int64
+	removePeerMetrics = func(ip string) { removed = append(removed, ip) }
+	setPeerCount = func(v int64) { count = v }
+
+	m.expireStale()
+
+	assert.Equal(t, []string{"10.0.0.1"}, removed)
+	assert.Equal(t, int64(1), count)
+	assert.Equal(t, 1, m.peers.Len())
+}

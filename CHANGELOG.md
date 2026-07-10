@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `hl_node_parent_peer_block_lag_seconds{peer_ip}` (requires `--peer-latency`): EMA of block apply lag (wall clock minus chain block timestamp) attributed to the current parent peer. Catches steady-but-behind drift, which produces normal inter-block gaps and is invisible to the rate-band check
+- Apply lag above 30s now also counts as degraded time in `hl_node_parent_peer_degraded_seconds_total`
+
+### Changed
+
+- Peers with 5+ consecutive probe failures are probed every 15 minutes instead of every minute
+- Peers unseen in node logs for 48h that are also unreachable are expired from the monitored set, ex-parents included (they remain exempt from LRU eviction only)
+- `peers.json` entries gained `consec_fails` and `last_probe` fields for probe bookkeeping
+
 ## [2.2.0] - 2026-07-08
 
 ### Added

@@ -246,3 +246,44 @@ func TestPeerSet_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 	assert.LessOrEqual(t, ps.Len(), 10)
 }
+
+func TestPeerSet_RecordProbe(t *testing.T) {
+	ps := NewPeerSet(t.TempDir())
+	_, _ = ps.Register("10.0.0.1", Outbound)
+
+	ps.RecordProbe("10.0.0.1", false)
+	ps.RecordProbe("10.0.0.1", false)
+
+	p := ps.All()[0]
+	assert.Equal(t, 2, p.ConsecFails)
+	assert.False(t, p.LastProbe.IsZero())
+
+	ps.RecordProbe("10.0.0.1", true)
+	assert.Equal(t, 0, ps.All()[0].ConsecFails)
+
+	// unknown IP is a no-op
+	ps.RecordProbe("10.9.9.9", false)
+	assert.Equal(t, 1, ps.Len())
+}
+
+func TestPeerSet_ExpireStale(t *testing.T) {
+	ps := NewPeerSet(t.TempDir())
+	now := time.Now()
+	stale := now.Add(-peerTTL - time.Hour)
+
+	ps.mu.Lock()
+	ps.peers["10.0.0.1"] = &Peer{IP: "10.0.0.1", LastSeen: stale, ConsecFails: failBackoffThreshold}
+	ps.peers["10.0.0.2"] = &Peer{IP: "10.0.0.2", LastSeen: stale, ConsecFails: failBackoffThreshold, WasParent: true}
+	ps.peers["10.0.0.3"] = &Peer{IP: "10.0.0.3", LastSeen: stale, ConsecFails: 0}                  // old but reachable
+	ps.peers["10.0.0.4"] = &Peer{IP: "10.0.0.4", LastSeen: now, ConsecFails: failBackoffThreshold} // unreachable but fresh
+	ps.mu.Unlock()
+
+	expired := ps.ExpireStale(now)
+
+	assert.ElementsMatch(t, []string{"10.0.0.1", "10.0.0.2"}, expired)
+	assert.Equal(t, 2, ps.Len())
+	assert.True(t, ps.Dirty())
+
+	// nothing left to expire
+	assert.Empty(t, ps.ExpireStale(now))
+}

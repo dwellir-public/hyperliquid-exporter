@@ -139,6 +139,7 @@ var (
 	HLNodeParentPeerTenureGauge          api.Float64ObservableGauge
 	HLNodeParentPeerSwitchesCounter      api.Int64Counter
 	HLNodeParentPeerLatencyGauge         api.Float64ObservableGauge
+	HLNodeParentPeerBlockLagGauge        api.Float64ObservableGauge
 	HLNodeParentPeerTenureTotalCounter   api.Float64Counter
 	HLNodeParentPeerDegradedTotalCounter api.Float64Counter
 	HLNodeParentPeerBlocksTotalCounter   api.Int64Counter
@@ -1009,6 +1010,14 @@ func createInstruments() error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create parent peer latency gauge: %w", err)
+	}
+
+	HLNodeParentPeerBlockLagGauge, err = meter.Float64ObservableGauge(
+		"hl_node_parent_peer_block_lag_seconds",
+		api.WithDescription("EMA of block apply lag (wall clock minus chain block timestamp) attributed to the current parent peer"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create parent peer block lag gauge: %w", err)
 	}
 
 	HLNodeParentPeerTenureTotalCounter, err = meter.Float64Counter(

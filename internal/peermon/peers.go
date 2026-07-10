@@ -11,7 +11,17 @@ import (
 	"time"
 )
 
-const maxPeers = 256
+const (
+	maxPeers = 256
+
+	// failBackoffThreshold is the consecutive probe failures after which a
+	// peer is probed at backoffProbeInterval instead of every cycle, and
+	// becomes eligible for TTL expiry.
+	failBackoffThreshold = 5
+	// peerTTL is how long a peer may go unseen in node logs before an
+	// unreachable peer is expired from the set.
+	peerTTL = 48 * time.Hour
+)
 
 // PeerDirection indicates how this node relates to a peer.
 type PeerDirection string
@@ -24,11 +34,13 @@ const (
 
 // Peer represents a known peer with its last-seen timestamp.
 type Peer struct {
-	IP         string                 `json:"ip"`
-	Port       int                    `json:"port,omitempty"`
-	Directions map[PeerDirection]bool `json:"directions"`
-	LastSeen   time.Time              `json:"last_seen"`
-	WasParent  bool                   `json:"was_parent,omitempty"`
+	IP          string                 `json:"ip"`
+	Port        int                    `json:"port,omitempty"`
+	Directions  map[PeerDirection]bool `json:"directions"`
+	LastSeen    time.Time              `json:"last_seen"`
+	WasParent   bool                   `json:"was_parent,omitempty"`
+	ConsecFails int                    `json:"consec_fails,omitempty"`
+	LastProbe   time.Time              `json:"last_probe,omitzero"`
 }
 
 // PeerSet is a thread-safe, bounded set of peers with JSON persistence.
@@ -128,6 +140,50 @@ func (ps *PeerSet) UpdatePort(ip string, port int) {
 	p.Port = port
 	ps.gen++
 	ps.dirty = true
+}
+
+// RecordProbe updates a peer's probe bookkeeping: LastProbe is stamped and
+// ConsecFails resets on success or increments on failure.
+func (ps *PeerSet) RecordProbe(ip string, ok bool) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	p, exists := ps.peers[ip]
+	if !exists {
+		return
+	}
+
+	p.LastProbe = time.Now()
+	if ok {
+		p.ConsecFails = 0
+	} else {
+		p.ConsecFails++
+	}
+	ps.gen++
+	ps.dirty = true
+}
+
+// ExpireStale removes peers unseen in node logs for peerTTL that are also
+// unreachable (at or past failBackoffThreshold consecutive probe failures),
+// returning the expired IPs. Ex-parents are not exempt: the WasParent LRU
+// exemption preserves quality history through churn, but a dead ex-parent
+// must not squat in the set forever.
+func (ps *PeerSet) ExpireStale(now time.Time) []string {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	var expired []string
+	for ip, p := range ps.peers {
+		if now.Sub(p.LastSeen) > peerTTL && p.ConsecFails >= failBackoffThreshold {
+			delete(ps.peers, ip)
+			expired = append(expired, ip)
+		}
+	}
+	if len(expired) > 0 {
+		ps.gen++
+		ps.dirty = true
+	}
+	return expired
 }
 
 // All returns a snapshot of all peers.

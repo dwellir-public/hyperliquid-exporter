@@ -14,11 +14,15 @@ const (
 	emaWarmupBlocks      = 300   // no degraded verdicts before this
 	stallFloorSeconds    = 3.0   // min gap before "no blocks" counts as stall
 	maxAccountGapSeconds = 900.0 // clamp for accounting deltas
+	lagAlpha             = 0.2   // apply-lag EMA, ~ last 10-20 blocks
+	degradedLagSeconds   = 30.0  // apply lag above this => degraded
+	lagWarmupBlocks      = 5     // no lag verdicts before this
 )
 
 // parentQuality attributes block-rate health to whichever peer is parent.
 // Degraded = short-window block rate below degradedRateFraction of the
-// long-run baseline (rate-band), or an outright stall.
+// long-run baseline (rate-band), drifting behind the chain tip (apply lag),
+// or an outright stall.
 type parentQuality struct {
 	mu            sync.Mutex
 	now           func() time.Time // injectable for tests, defaults to time.Now
@@ -29,6 +33,8 @@ type parentQuality struct {
 	fastGapEMA    float64   // seconds, short-window inter-block gap
 	slowGapEMA    float64   // seconds, long-run baseline gap
 	samples       int       // blocks seen, for warmup
+	lagEMA        float64   // seconds, wall clock minus chain timestamp at apply
+	lagSamples    int       // blocks with a lag sample, for warmup
 }
 
 func newParentQuality() *parentQuality {
@@ -42,6 +48,7 @@ var (
 	addParentPeerTenure       = metrics.AddParentPeerTenure
 	addParentPeerDegraded     = metrics.AddParentPeerDegraded
 	incrementParentPeerBlocks = metrics.IncrementParentPeerBlocks
+	setParentPeerBlockLag     = metrics.SetParentPeerBlockLag
 )
 
 // SetParent switches attribution to a new parent peer, accounting elapsed
@@ -74,10 +81,23 @@ func (q *parentQuality) OnBlock(blockTime time.Time) {
 		}
 	}
 
+	// apply lag: how far behind the chain tip this node is running. The EMA
+	// spans parent switches on purpose — lag is node state; a parent that
+	// catches the node up pulls it down, one that lets it drift pushes it up.
+	if lag := q.now().Sub(blockTime).Seconds(); lag >= 0 {
+		if q.lagSamples == 0 {
+			q.lagEMA = lag
+		} else {
+			q.lagEMA = lagAlpha*lag + (1-lagAlpha)*q.lagEMA
+		}
+		q.lagSamples++
+	}
+
 	q.account(false)
 
 	if q.parentIP != "" {
 		incrementParentPeerBlocks(q.parentIP)
+		setParentPeerBlockLag(q.parentIP, q.lagEMA)
 	}
 
 	q.lastBlockTime = blockTime
@@ -115,10 +135,22 @@ func (q *parentQuality) account(includeStall bool) {
 	q.lastAccount = now
 }
 
-// degraded reports the rate-band verdict: short-window rate persistently
-// below baseline. Caller must hold mu.
+// degraded reports whether the parent is letting the node run unhealthily:
+// short-window block rate persistently below baseline (rate-band), or apply
+// lag past the drift threshold. The rate-band catches rate collapse; the lag
+// check catches steady-but-behind drift, which produces normal inter-block
+// gaps and is invisible to the rate-band. Caller must hold mu.
 func (q *parentQuality) degraded() bool {
-	return q.samples >= emaWarmupBlocks && q.fastGapEMA > q.slowGapEMA/degradedRateFraction
+	if q.samples >= emaWarmupBlocks && q.fastGapEMA > q.slowGapEMA/degradedRateFraction {
+		return true
+	}
+	return q.lagging()
+}
+
+// lagging reports the apply-lag verdict: the node is applying blocks well
+// behind their chain timestamps. Caller must hold mu.
+func (q *parentQuality) lagging() bool {
+	return q.lagSamples >= lagWarmupBlocks && q.lagEMA > degradedLagSeconds
 }
 
 // stalled reports whether blocks have stopped arriving outright.

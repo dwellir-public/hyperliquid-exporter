@@ -14,6 +14,10 @@ const (
 	probeInterval     = 1 * time.Minute
 	initialProbeDelay = 2 * time.Second
 	maxConcurrent     = 10
+
+	// backoffProbeInterval is the reduced probe cadence for peers at or past
+	// failBackoffThreshold consecutive failures.
+	backoffProbeInterval = 15 * time.Minute
 )
 
 var peerProbeTimeout = 5 * time.Second
@@ -93,12 +97,26 @@ func (m *Monitor) Start(ctx context.Context, errCh chan<- error) {
 			}
 
 		case <-ticker.C:
+			m.expireStale()
 			m.saveIfDirty()
 			if _, skipped := m.startProbeCycle(ctx); skipped {
 				logger.WarningComponent("peer-latency", "Previous probe cycle still running, skipping tick")
 			}
 		}
 	}
+}
+
+// expireStale drops long-unseen unreachable peers and their metrics.
+func (m *Monitor) expireStale() {
+	expired := m.peers.ExpireStale(time.Now())
+	if len(expired) == 0 {
+		return
+	}
+	for _, ip := range expired {
+		removePeerMetrics(ip)
+	}
+	setPeerCount(int64(m.peers.Len()))
+	logger.InfoComponent("peer-latency", "Expired %d stale unreachable peers", len(expired))
 }
 
 func (m *Monitor) saveIfDirty() {
@@ -135,6 +153,11 @@ func (m *Monitor) probeAll(ctx context.Context, peers []Peer) {
 	var wg sync.WaitGroup
 
 	for _, p := range peers {
+		// unreachable peers are probed at a reduced cadence
+		if p.ConsecFails >= failBackoffThreshold && time.Since(p.LastProbe) < backoffProbeInterval {
+			continue
+		}
+
 		select {
 		case <-ctx.Done():
 		case sem <- struct{}{}:
@@ -155,6 +178,7 @@ func (m *Monitor) probeAll(ctx context.Context, peers []Peer) {
 
 			metrics.IncrementPeerProbes(peer.IP)
 			result := Probe(probeCtx, peer.IP, peer.Port)
+			m.peers.RecordProbe(peer.IP, result.Reachable)
 
 			if result.Reachable {
 				latencyMs := float64(result.Latency.Milliseconds())

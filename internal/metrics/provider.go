@@ -70,6 +70,7 @@ func getAllObservables() []api.Observable {
 		HLNodeParentPeerTrafficGauge,
 		HLNodeParentPeerTenureGauge,
 		HLNodeParentPeerLatencyGauge,
+		HLNodeParentPeerBlockLagGauge,
 
 		// hl-node client metrics
 		HLSoftwareVersionInfo,

@@ -49,7 +49,22 @@ var (
 	addParentPeerDegraded     = metrics.AddParentPeerDegraded
 	incrementParentPeerBlocks = metrics.IncrementParentPeerBlocks
 	setParentPeerBlockLag     = metrics.SetParentPeerBlockLag
+	recordPropagationLatency  = metrics.RecordPropagationLatency
 )
+
+// unknownParent labels propagation samples taken before a parent is known
+// (or when --peer-latency is off).
+const unknownParent = "unknown"
+
+// Parent returns the current parent peer IP, or unknownParent.
+func (q *parentQuality) Parent() string {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.parentIP == "" {
+		return unknownParent
+	}
+	return q.parentIP
+}
 
 // SetParent switches attribution to a new parent peer, accounting elapsed
 // time to the old parent first.

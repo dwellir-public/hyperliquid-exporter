@@ -115,6 +115,58 @@ func TestParseBlockTimeLine_BlockTimeDiff(t *testing.T) {
 	}
 }
 
+func TestParseBlockTimeLine_Propagation(t *testing.T) {
+	ctx := context.Background()
+	initBlockGlobals(t)
+
+	type sample struct {
+		ms     float64
+		state  string
+		parent string
+	}
+	var got []sample
+	orig := recordPropagationLatency
+	recordPropagationLatency = func(ms float64, state, parent string) {
+		got = append(got, sample{ms, state, parent})
+	}
+	origQ := quality
+	quality = newParentQuality()
+	t.Cleanup(func() {
+		recordPropagationLatency = orig
+		quality = origQ
+	})
+
+	// no parent known yet: attributed to "unknown"
+	line := `{"height":1,"block_time":"2025-01-01T00:00:00.000000000","apply_duration":0.001,"begin_block_wall_time":"2025-01-01T00:00:00.150500000"}`
+	if err := parseBlockTimeLine(ctx, line, "fast"); err != nil {
+		t.Fatal(err)
+	}
+	quality.SetParent("10.0.0.1")
+	line = `{"height":2,"block_time":"2025-01-01T00:00:01.000000000","apply_duration":0.001,"begin_block_wall_time":"2025-01-01T00:00:01.200000000"}`
+	if err := parseBlockTimeLine(ctx, line, "fast"); err != nil {
+		t.Fatal(err)
+	}
+	// negative delta (clock skew) and missing field both produce no sample
+	line = `{"height":3,"block_time":"2025-01-01T00:00:02.000000000","apply_duration":0.001,"begin_block_wall_time":"2025-01-01T00:00:01.900000000"}`
+	if err := parseBlockTimeLine(ctx, line, "fast"); err != nil {
+		t.Fatal(err)
+	}
+	line = `{"height":4,"block_time":"2025-01-01T00:00:03.000000000","apply_duration":0.001}`
+	if err := parseBlockTimeLine(ctx, line, "slow"); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []sample{{150.5, "fast", unknownParent}, {200, "fast", "10.0.0.1"}}
+	if len(got) != len(want) {
+		t.Fatalf("got %d samples %v, want %v", len(got), got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("sample %d = %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
 func TestParseLegacyBlockTimeLine(t *testing.T) {
 	ctx := context.Background()
 

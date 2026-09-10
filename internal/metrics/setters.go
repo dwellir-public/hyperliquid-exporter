@@ -557,28 +557,6 @@ func SetEVMMaxPriorityFeeGwei(fee float64, blockType ...string) {
 	}
 }
 
-func IncrementEVMContractTx(address, name string, isToken bool, tokenType, symbol string, blockType ...string) {
-	ctx := context.Background()
-	labels := []attribute.KeyValue{
-		attribute.String("contract_address", address),
-		attribute.String("contract_name", name),
-		attribute.Bool("is_token", isToken),
-		attribute.String("type", tokenType),
-	}
-
-	// only add symbol label if it's not empty ( for tokens)
-	if symbol != "" {
-		labels = append(labels, attribute.String("symbol", symbol))
-	}
-
-	// add block type label if provided
-	if len(blockType) > 0 {
-		labels = append(labels, attribute.String("block_type", blockType[0]))
-	}
-
-	HLEVMContractTxCounter.Add(ctx, 1, api.WithAttributes(labels...))
-}
-
 func SetEVMAccountCount(cnt int64) {
 	metricsMutex.Lock()
 	defer metricsMutex.Unlock()

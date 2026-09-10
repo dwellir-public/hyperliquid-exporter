@@ -122,9 +122,11 @@ func runMonitor(ctx context.Context, name string, errCh chan<- error, fn func(co
 func SafeGo(name string, fn func())
 ```
 
-Highest value per line in this plan. Land it first; several later items (1.2) are otherwise process-fatal.
+Highest value per line in this plan. Land it first; it makes every later change non-fatal.
 
 ### 1.2 Contract resolver send on closed channel
+
+Obsolete: `internal/contracts/` and `hl_evm_contract_tx_total` were removed after Hyperscan's API went away.
 
 - Upstream: `2dc5aa9` (v3.1.0), `Shutdown` in `up:internal/contracts/resolver.go`.
 - Ours: `Shutdown` at `ours:internal/contracts/resolver.go:332` closes `fetchQueue` (created at line 86) while the EVM stream can still send at line 167. Send on closed channel panics even under `select`.
@@ -155,6 +157,8 @@ Highest value per line in this plan. Land it first; several later items (1.2) ar
 - Change: downgrade to debug, add the bucket.
 
 ### 1.7 `--contract-metrics-limit` does not cap series
+
+Obsolete: the flag and metric were removed together with `internal/contracts/`.
 
 - Upstream: `d9f74f4` (v3.1.0). First N addresses keep their series, the rest roll into `contract_address="other"`. Upstream observed 7,140 series before the fix.
 - Ours: the flag only sizes a lookup cache, `ours:internal/monitors/evm_monitor.go:46,55`.
@@ -194,7 +198,7 @@ Also replace `getLatestHourlyFile` in `ours:internal/monitors/gossip_monitor.go:
 
 - Upstream: `2cb58cd` removed the sweep entirely.
 - Ours: sweep at `ours:internal/metrics/types.go:141-176` caps every labeled family at 200 by LRU. Above 200 validators it drops stake, jailed and latency series every 30 s. Tests pinning this: `ours:internal/metrics/cleanup_test.go:53,101`.
-- Change: delete the sweep and its tests. Prerequisites: 3.4 (validator reconciliation) and 1.7 (contract cap), otherwise cardinality is unbounded.
+- Change: delete the sweep and its tests. Prerequisite: 3.4 (validator reconciliation), otherwise cardinality is unbounded.
 
 ### 2.4 Consensus per-line lock churn
 
@@ -406,7 +410,7 @@ The hl-node log surface changes without notice (`current_stakes`, round-advance 
 
 ## Affected Files
 
-Tier 0 to 3 (modify): `internal/monitors/validator_status_monitor.go`, `round_advance_monitor.go`, `consensus_monitor.go`, `validator_latency_monitor.go`, `evm_monitor.go`, `update_checker.go`, `version_monitor.go`, `validator_api_monitor.go`, `block_monitor.go`, `replica_monitor.go`, `proposal_monitor.go`, `internal/replica/parser.go`, `internal/contracts/resolver.go`, `internal/metrics/identity.go`, `getters.go`, `setters.go`, `types.go`, `memory.go`, `instruments.go`, `cleanup_test.go`, `internal/utils/utils.go`, `internal/exporter/exporter.go`, `internal/peermon/monitor.go`, `peers.go`.
+Tier 0 to 3 (modify): `internal/monitors/validator_status_monitor.go`, `round_advance_monitor.go`, `consensus_monitor.go`, `validator_latency_monitor.go`, `evm_monitor.go`, `update_checker.go`, `version_monitor.go`, `validator_api_monitor.go`, `block_monitor.go`, `replica_monitor.go`, `proposal_monitor.go`, `internal/replica/parser.go`, `internal/metrics/identity.go`, `getters.go`, `setters.go`, `types.go`, `memory.go`, `instruments.go`, `cleanup_test.go`, `internal/utils/utils.go`, `internal/exporter/exporter.go`, `internal/peermon/monitor.go`, `peers.go`.
 Tier 0 to 3 (new): `internal/exporter/safego.go`, `internal/monitors/safego.go`, `internal/actiontypes/actiontypes.go`, `internal/monitors/testdata/testnet_new_action_types.constructed.jsonl`.
 Tier 4 (modify): `internal/monitors/log_tail.go`, `gossip_monitor.go`, `gossip_connections_monitor.go`, `outbound_peers_monitor.go`, `parent_peer_monitor.go`, `parent_quality.go`, `internal/peermon/prober.go`, `internal/exporter/exporter.go`.
 Tier 5 (new): one file per monitor under `internal/monitors/`, instrument declarations in `internal/metrics/instruments.go`, wiring in `internal/exporter/exporter.go`, flags in `internal/config/config.go` and `cmd/hyperliquid-exporter/main.go`.
@@ -417,11 +421,11 @@ Tier 7 (new): `docs/routines/upstream-sync.md`, `docs/routines/hl-node-schema-wa
 
 Each phase leaves the tree green and is one release.
 
-Phases intentionally cut across tiers. Tiers rank items by severity and category; phases group them by what can land together safely. Three rules drive the grouping: dependency order (the series sweep in 2.3 is only removed after validator reconciliation in 3.4 and the contract cap in 1.7 exist), shared code surface (the resolver in 2.1 and the tailing fixes in 4.1 to 4.3 touch the same files and ship together), and release size small enough to verify on a live node. Safego (1.1) leads phase 1 because it makes every later change non-fatal.
+Phases intentionally cut across tiers. Tiers rank items by severity and category; phases group them by what can land together safely. Three rules drive the grouping: dependency order (the series sweep in 2.3 is only removed after validator reconciliation in 3.4 exists), shared code surface (the resolver in 2.1 and the tailing fixes in 4.1 to 4.3 touch the same files and ship together), and release size small enough to verify on a live node. Safego (1.1) leads phase 1 because it makes every later change non-fatal.
 
-1. **Safety and schema (2.4.0):** Tier 1.1, Tier 0 complete, 1.2, 1.3, 1.4, 1.6, 3.6. All small; verify against a current mainnet node that `hl_consensus_validator_count`, timeout rounds and signer mapping are non-zero.
+1. **Safety and schema (2.4.0):** Tier 1.1, Tier 0 complete, 1.3, 1.4, 1.6, 3.6. All small; verify against a current mainnet node that `hl_consensus_validator_count`, timeout rounds and signer mapping are non-zero.
 2. **Perf and tailing (2.5.0):** 2.1, 2.2, 4.1, 4.2, 4.3, 4.7 child reset. Measure CPU before and after on a live node.
-3. **Metric correctness (2.6.0):** 3.1, 3.2, 3.5, 1.5, 1.7, 3.4, then 2.3. Changelog must call out that operation counts drop 2 to 6x.
+3. **Metric correctness (2.6.0):** 3.1, 3.2, 3.5, 1.5, 3.4, then 2.3. Changelog must call out that operation counts drop 2 to 6x.
 4. **Peer quality (2.7.0):** 4.4, 4.5, 4.6, rest of 4.7, 1.8.
 5. **New monitors (2.8.0):** Tier 5 ranks 1 to 5. Charm gains any new flags.
 6. **Infra and routines (2.9.0):** Tier 6, Tier 7. 3.7, 3.8, 2.4 and Tier 5 ranks 6 to 10 as capacity allows.

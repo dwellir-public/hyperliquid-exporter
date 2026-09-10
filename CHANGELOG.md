@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- `--contract-metrics`, `--contract-metrics-limit`, the `hl_evm_contract_tx_total` metric, and the `internal/contracts/` resolver. Contract names came from Hyperscan's Blockscout API, which no longer exists (the domain redirects to hl.eco and Blockscout retired free per-instance APIs on 2026-07-01), so the feature failed at startup for every user. `hl_evm_contract_create_total` is unaffected. Service args still passing the removed flags fail to parse, drop them before upgrading
+
 ## [2.4.0] - 2026-09-10
 
 ### Added

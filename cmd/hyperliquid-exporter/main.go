@@ -83,8 +83,6 @@ func main() {
 	chain := startCmd.String("chain", "", "Chain type ('mainnet' or 'testnet')")
 	otlpInsecure := startCmd.Bool("otlp-insecure", false, "Use insecure connection for OTLP")
 	enableEVM := startCmd.Bool("evm-metrics", false, "Enable EVM monitoring")
-	contractMetrics := startCmd.Bool("contract-metrics", false, "Enable per-contract transaction metrics")
-	contractLimit := startCmd.Int("contract-metrics-limit", 20, "Maximum number of individual contract labels to retain")
 	enableReplicaMetrics := startCmd.Bool("replica-metrics", false, "Enable replica commands transaction metrics")
 	enableValidatorRTT := startCmd.Bool("validator-rtt", false, "Enable validator RTT monitoring")
 	enablePeerLatency := startCmd.Bool("peer-latency", false, "Enable peer latency monitoring")
@@ -109,20 +107,18 @@ func main() {
 	}
 
 	flags := &config.Flags{
-		NodeHome:              *nodeHome,
-		NodeBinary:            *nodeBinary,
-		Chain:                 *chain,
-		EnableEVM:             *enableEVM,
-		EnableContractMetrics: *contractMetrics,
-		ContractMetricsLimit:  *contractLimit,
-		EnableCoreTxMetrics:   false,
-		UseLiveState:          false,
-		EnableReplicaMetrics:  *enableReplicaMetrics,
-		ReplicaDataDir:        "",         // Always use default
-		ReplicaBufferSize:     8,          // Always use default 8MB
-		EVMBlockTypeMetrics:   *enableEVM, // Always enable block type metrics when EVM is enabled
-		EnableValidatorRTT:    enableValidatorRTT,
-		EnablePeerLatency:     enablePeerLatency,
+		NodeHome:             *nodeHome,
+		NodeBinary:           *nodeBinary,
+		Chain:                *chain,
+		EnableEVM:            *enableEVM,
+		EnableCoreTxMetrics:  false,
+		UseLiveState:         false,
+		EnableReplicaMetrics: *enableReplicaMetrics,
+		ReplicaDataDir:       "",         // Always use default
+		ReplicaBufferSize:    8,          // Always use default 8MB
+		EVMBlockTypeMetrics:  *enableEVM, // Always enable block type metrics when EVM is enabled
+		EnableValidatorRTT:   enableValidatorRTT,
+		EnablePeerLatency:    enablePeerLatency,
 	}
 
 	cfg := config.LoadConfig(flags)

@@ -13,9 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/validaoxyz/hyperliquid-exporter/internal/cache"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
-	"github.com/validaoxyz/hyperliquid-exporter/internal/contracts"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/utils"
@@ -24,14 +22,6 @@ import (
 var (
 	// track the last block time for calculating block time differences
 	lastEVMBlockTime time.Time
-
-	// contract tracking for per-contract metrics - using LRU cache
-	contractCache          *cache.LRUCache
-	contractMetricsEnabled bool
-	contractLimit          int
-
-	// contract resolver for name resolution
-	contractResolver *contracts.Resolver
 
 	// block type metrics flag
 	blockTypeMetricsEnabled bool
@@ -42,38 +32,9 @@ var (
 // 3. Updates all EVM-related prometheus metrics
 func StartEVMMonitor(ctx context.Context, cfg config.Config, errCh chan<- error) {
 	// initialize config
-	contractMetricsEnabled = cfg.EnableContractMetrics
-	contractLimit = cfg.ContractMetricsLimit
 	blockTypeMetricsEnabled = cfg.EVMBlockTypeMetrics
 
-	logger.InfoComponent("evm", "EVM monitor config: contractMetrics=%v, blockTypeMetrics=%v",
-		contractMetricsEnabled, blockTypeMetricsEnabled)
-
-	// initialize contract cache with LRU eviction
-	if contractMetricsEnabled {
-		// use configured limit or default to 1000 contracts, 24 hour TTL
-		cacheSize := contractLimit
-		if cacheSize <= 0 {
-			cacheSize = 1000
-		}
-		contractCache = cache.NewLRUCache(cacheSize, 24*time.Hour)
-		logger.InfoComponent("evm", "Initialized contract cache with size %d", cacheSize)
-	}
-
-	// initialize contract resolver
-	contractResolver = contracts.NewResolver()
-	if err := contractResolver.Initialize(ctx); err != nil {
-		logger.WarningComponent("evm", "Failed to initialize contract resolver: %v", err)
-		// continue anyway - we can still track with unknown names
-	}
-
-	// ensure resolver is cleaned up when context is cancelled
-	go func() {
-		<-ctx.Done()
-		if contractResolver != nil {
-			contractResolver.Shutdown()
-		}
-	}()
+	logger.InfoComponent("evm", "EVM monitor config: blockTypeMetrics=%v", blockTypeMetricsEnabled)
 
 	// wait for validator status to be determined
 	time.Sleep(60 * time.Second)
@@ -412,52 +373,6 @@ func processTransactions(body map[string]any, blockType string) error {
 								metrics.IncrementEVMContractCreations(blockType)
 							} else {
 								metrics.IncrementEVMContractCreations()
-							}
-						} else if contractMetricsEnabled && contractCache != nil {
-							// track contract interactions using LRU cache
-							var contractInfo *contracts.ContractInfo
-
-							// check if already in cache
-							if cachedInfo, found := contractCache.Get(addr); found {
-								contractInfo = cachedInfo.(*contracts.ContractInfo)
-							} else {
-								// get contract info from resolver
-								if contractResolver != nil {
-									contractInfo = contractResolver.GetContractInfo(addr)
-								}
-
-								// default values if resolver is not available
-								if contractInfo == nil {
-									contractInfo = &contracts.ContractInfo{
-										Address: addr,
-										Name:    "unknown",
-										IsToken: false,
-										Type:    "unknown",
-										Symbol:  "",
-									}
-								}
-
-								// add to cache
-								contractCache.Set(addr, contractInfo)
-							}
-
-							if blockTypeMetricsEnabled && blockType != "" {
-								metrics.IncrementEVMContractTx(
-									contractInfo.Address,
-									contractInfo.Name,
-									contractInfo.IsToken,
-									contractInfo.Type,
-									contractInfo.Symbol,
-									blockType,
-								)
-							} else {
-								metrics.IncrementEVMContractTx(
-									contractInfo.Address,
-									contractInfo.Name,
-									contractInfo.IsToken,
-									contractInfo.Type,
-									contractInfo.Symbol,
-								)
 							}
 						}
 					}

@@ -21,8 +21,6 @@ OPTIONS:
   --chain              Chain type: 'mainnet' or 'testnet' (required)
   --replica-metrics    Transaction metrics (requires node --replica-cmds-style)
   --evm-metrics        EVM chain metrics
-  --contract-metrics   Per-contract transaction tracking
-  --contract-metrics-limit N  Max contract labels to retain (default: 20)
   --validator-rtt      Enable validator RTT monitoring
   --peer-latency       Enable peer latency monitoring (TCP probes to known peers)
   --otlp               Enable OTLP export (requires --alias and --otlp-endpoint)

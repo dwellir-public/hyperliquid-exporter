@@ -15,8 +15,6 @@ type Config struct {
 	NodeBinary             string
 	Chain                  string
 	EnableEVM              bool
-	EnableContractMetrics  bool
-	ContractMetricsLimit   int
 	EVMBlockTypeMetrics    bool
 	EnableCoreTxMetrics    bool
 	UseLiveState           bool
@@ -30,21 +28,19 @@ type Config struct {
 }
 
 type Flags struct {
-	NodeHome              string
-	NodeBinary            string
-	Chain                 string
-	EnableEVM             bool
-	EnableContractMetrics bool
-	ContractMetricsLimit  int
-	EVMBlockTypeMetrics   bool
-	EnableCoreTxMetrics   bool
-	UseLiveState          bool
-	EnableReplicaMetrics  bool
-	ReplicaDataDir        string
-	ReplicaBufferSize     int
-	EnableValidatorRTT    *bool // to distinguish between not set and false
-	EnablePeerLatency     *bool
-	LogLevel              string
+	NodeHome             string
+	NodeBinary           string
+	Chain                string
+	EnableEVM            bool
+	EVMBlockTypeMetrics  bool
+	EnableCoreTxMetrics  bool
+	UseLiveState         bool
+	EnableReplicaMetrics bool
+	ReplicaDataDir       string
+	ReplicaBufferSize    int
+	EnableValidatorRTT   *bool // to distinguish between not set and false
+	EnablePeerLatency    *bool
+	LogLevel             string
 }
 
 // load env vars and returns a Config struct
@@ -92,8 +88,6 @@ func LoadConfig(flags *Flags) Config {
 		NodeBinary:             nodeBinary,
 		Chain:                  flags.Chain,
 		EnableEVM:              flags.EnableEVM,
-		EnableContractMetrics:  flags.EnableContractMetrics,
-		ContractMetricsLimit:   flags.ContractMetricsLimit,
 		EVMBlockTypeMetrics:    flags.EVMBlockTypeMetrics,
 		EnableCoreTxMetrics:    flags.EnableCoreTxMetrics,
 		UseLiveState:           flags.UseLiveState,
@@ -113,12 +107,6 @@ func LoadConfig(flags *Flags) Config {
 	}
 	if flags.Chain != "" {
 		config.Chain = flags.Chain
-	}
-	if flags.EnableContractMetrics != config.EnableContractMetrics {
-		config.EnableContractMetrics = flags.EnableContractMetrics
-	}
-	if flags.ContractMetricsLimit != config.ContractMetricsLimit {
-		config.ContractMetricsLimit = flags.ContractMetricsLimit
 	}
 	config.EVMBlockTypeMetrics = config.EnableEVM
 	if flags.EnableCoreTxMetrics != config.EnableCoreTxMetrics {

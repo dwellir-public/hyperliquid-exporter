@@ -19,7 +19,7 @@ make clean                # remove bin/
 
 ## CLI Flags
 
-`--chain` (mainnet|testnet), `--log-level`, `--node-home`, `--node-binary`, `--evm-metrics`, `--contract-metrics`, `--contract-metrics-limit`, `--replica-metrics`, `--validator-rtt`, `--peer-latency`, `--otlp`, `--otlp-endpoint`, `--otlp-insecure`, `--alias`. Config merges env vars (`.env` file via godotenv) with CLI flags.
+`--chain` (mainnet|testnet), `--log-level`, `--node-home`, `--node-binary`, `--evm-metrics`, `--replica-metrics`, `--validator-rtt`, `--peer-latency`, `--otlp`, `--otlp-endpoint`, `--otlp-insecure`, `--alias`. Config merges env vars (`.env` file via godotenv) with CLI flags.
 
 ## Architecture
 
@@ -36,10 +36,9 @@ make clean                # remove bin/
 - **`internal/metrics/`** — Metric definitions (`instruments.go`), update functions (`setters.go`), async callbacks (`callbacks.go`), cleanup loop, Prometheus server (`prometheus.go`), OTLP setup (`otlp.go`). Global state via `currentValues`/`labeledValues` maps. Cleanup runs every 30s, capping labeled values at 200 per metric.
 - **`internal/peermon/`** — Peer latency monitoring (`--peer-latency`). Maintains bounded peer set (max 256, ex-parent peers exempt from LRU eviction) with disk persistence, probes peers via TCP connect once per minute. Fed peer IPs from gossip monitors and tcp_traffic logs (outbound peer discovery).
 - **`internal/replica/`** — Parses msgpack-formatted `replica_cmds` files into block metrics. Object pooling for memory efficiency.
-- **`internal/cache/`** — Thread-safe LRU cache with optional TTL. Used for signer→validator mappings, validator info, contract data.
+- **`internal/cache/`** — Thread-safe LRU cache with optional TTL. Used for signer→validator mappings and validator info.
 - **`internal/config/`** — Merges `.env` + env vars + CLI flags into `Config` struct.
 - **`internal/logger/`** — Component-aware colored logging (CORE, EVM, CONSENSUS, etc.).
-- **`internal/contracts/`** — Resolves contract addresses to names/symbols.
 - **`internal/hyperliquid-api/`** — Queries validator status and metadata from Hyperliquid API.
 
 ### Design patterns

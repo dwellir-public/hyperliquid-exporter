@@ -22,7 +22,6 @@ var (
 	// counters EVM
 	HLEVMTxTypeCounter             api.Int64Counter
 	HLEVMContractCreateCounter     api.Int64Counter
-	HLEVMContractTxCounter         api.Int64Counter
 	HLEVMHighGasLimitBlocksCounter api.Int64Counter
 
 	// observable gauges, Core
@@ -321,14 +320,6 @@ func createInstruments() error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create EVM contract creation counter: %w", err)
-	}
-
-	HLEVMContractTxCounter, err = meter.Int64Counter(
-		"hl_evm_contract_tx_total",
-		api.WithDescription("Total number of EVM contract transactions"),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create EVM contract transaction counter: %w", err)
 	}
 
 	HLEVMAccountCountGauge, err = meter.Int64ObservableGauge(

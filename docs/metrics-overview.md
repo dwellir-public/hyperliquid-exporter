@@ -37,7 +37,6 @@ Metrics marked with `--replica-metrics` also require hl-node to be running with 
 | `hl_evm_block_height` | Gauge | - | Current EVM block height | - |
 | `hl_evm_block_time_milliseconds` | Histogram | - | Time between EVM blocks | - |
 | `hl_evm_contract_create_total` | Counter | `block_type`* | Total contract creations | - |
-| `hl_evm_contract_tx_total` | Counter | `contract_address`, `contract_name`, `is_token`, `type`, `symbol`, `block_type`* | Contract interactions by address | - |
 | `hl_evm_gas_limit` | Gauge | `block_type`* | Gas limit per block | - |
 | `hl_evm_gas_limit_distribution` | Histogram | - | Distribution of gas limits across blocks | - |
 | `hl_evm_gas_used` | Gauge | `block_type`* | Gas used per block | - |

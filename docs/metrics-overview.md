@@ -202,6 +202,90 @@ The above are available to all node types, while the below metrics require acces
 | `hl_consensus_monitor_lines_processed_total` | Counter | `monitor_type` | Total lines processed by consensus monitor | Validator node |
 | `hl_consensus_monitor_errors_total` | Counter | `monitor_type` | Total errors encountered by consensus monitor | Validator node |
 
+## Node Host Metrics
+
+Ported from upstream v4.1.1 under upstream names. Each monitor reads local files or procfs only and is on by default; disable with `--<flag>=false`. All report through the source-health envelope in the Exporter Metrics section (`stream` is `process`, `child_stderr`, `visor`, `node_state`, `disk`, `operator_config`).
+
+Not ported, reviewed and superseded: upstream's per-monitor health gauges (`hl_node_child_stderr_scan_up`, `hl_node_child_stderr_last_complete_timestamp_seconds`, `hl_node_disk_walk_up`, `hl_node_disk_statfs_up`, `hl_node_disk_errors_total`, `hl_node_disk_last_complete_age_seconds`, `hl_visor_last_observation_age_seconds`) are covered by the generic envelope; upstream's `*_available` and `*_populated` companion flags (`hl_visor_hardfork_version_available`, `hl_visor_scheduled_freeze_height_available`, `hl_visor_scheduled_freeze_height_current`, `hl_visor_reference_lag_populated`) are unnecessary because the corresponding gauge is withdrawn when the field is absent; upstream's deprecated legacy names (`hl_visor_freeze_abci_height`, `hl_visor_blocks_above_freeze`, `hl_evm_db_checkpoint_height`, `hl_evm_db_checkpoint_lag_blocks`) have the `hl_node_persisted_*` replacements here; `hl_node_operator_config_failed_loads` is the sum of the per-file series.
+
+### Process (`--process-metrics`)
+
+Reads `/proc` every 15 s for `hl-node` and `hl-visor`. A process is matched on `comm` plus its executable link or argv0; when several match, the oldest wins. Current-value gauges read 0 when the process is absent.
+
+| Metric | Type | Labels | Description | Requirements |
+|--------|------|--------|-------------|--------------|
+| `hl_node_process_up` | Gauge | `process` | 1 if the process was found in the latest scan | - |
+| `hl_node_process_start_time_seconds` | Gauge | `process` | Unix start time (boot time plus `starttime` ticks) | - |
+| `hl_node_process_cpu_seconds_total` | Gauge | `process` | Cumulative user plus kernel CPU seconds (a gauge: it resets with the process) | - |
+| `hl_node_process_rss_bytes` | Gauge | `process` | Resident set size | - |
+| `hl_node_process_virt_bytes` | Gauge | `process` | Virtual memory size | - |
+| `hl_node_process_threads` | Gauge | `process` | OS threads | - |
+| `hl_node_process_open_fds` | Gauge | `process` | Open file descriptors | - |
+| `hl_node_process_max_fds` | Gauge | `process` | Soft open-file limit; 0 when unlimited or unavailable | - |
+| `hl_node_process_open_fds_ratio` | Gauge | `process` | Open descriptors over the finite soft limit | - |
+| `hl_node_process_eligible_matches` | Gauge | `process` | Processes matching the name in the latest scan; above 1 means duplicates | - |
+| `hl_node_process_io_total` | Counter | `process`, `operation` | Exporter-lifetime `/proc/PID/io` deltas (`read_bytes`, `write_bytes`, `read_syscalls`, `write_syscalls`); a restart establishes a new baseline | - |
+
+### Child stderr (`--child-stderr-metrics`)
+
+Scans `data/visor_child_stderr/<date>/<n>/` every 60 s. hl-visor retains one artifact per child start. The first 4 KiB of each is classified with a fixed taxonomy: `app_hash_mismatch`, `hardfork_upgrade`, `sync_overflow`, `config_error`, `network`, `panic`, else `unknown`. A reason is bounded evidence, not a proven cause.
+
+| Metric | Type | Labels | Description | Requirements |
+|--------|------|--------|-------------|--------------|
+| `hl_node_child_starts` | Gauge | - | Retained artifacts (one per child start); prune-aware, do not rate | - |
+| `hl_node_child_crashes` | Gauge | `reason` | Retained readable artifacts by classified reason (`unknown` excluded) | - |
+| `hl_node_child_last_crash_seconds` | Gauge | `reason` | mtime of the newest artifact per reason; 0 when none | - |
+| `hl_node_child_stderr_artifacts` | Gauge | `state`, `reason` | Artifacts by read state (`empty`, `readable`, `truncated`, `unreadable`) and reason | - |
+| `hl_node_child_stderr_last_artifact_timestamp_seconds` | Gauge | `state`, `reason` | Newest mtime per state and reason; absent when none | - |
+
+### Visor and persisted node state (`--visor-metrics`, `--node-state-metrics`)
+
+The visor monitor (`--visor-metrics`) reads `hyperliquid_data/visor_abci_state.json` every 10 s, falling back to the newest `data/visor_abci_states/hourly` file. The node-state monitor (`--node-state-metrics`) reads three single-integer files under `hyperliquid_data` every 30 s; `hl_node_visor_height_above_persisted_freeze` needs both monitors. Despite the `evm_db_hub` directory names, those are core/ABCI heights, not EVM block heights.
+
+| Metric | Type | Labels | Description | Requirements |
+|--------|------|--------|-------------|--------------|
+| `hl_visor_height` | Gauge | - | Latest height applied per hl-visor | - |
+| `hl_visor_initial_height` | Gauge | - | `initial_height` of the current process generation | - |
+| `hl_visor_blocks_applied` | Gauge | - | `height` minus `initial_height`; 0 when either is unavailable | - |
+| `hl_visor_hardfork_version` | Gauge | `source` | `hardfork_version` from the visor state (`source="visor_state"`); absent when missing | - |
+| `hl_visor_scheduled_freeze_height` | Gauge | - | `scheduled_freeze_height`; absent while null | - |
+| `hl_visor_consensus_ahead_of_wall_seconds` | Gauge | - | `consensus_time` minus `wall_clock_time` of the latest sample | - |
+| `hl_visor_reference_lag_seconds` | Gauge | - | Reference-node lag when the visor reports it; absent otherwise | - |
+| `hl_node_persisted_abci_height` | Gauge | `source_class` | Height from `evm_db_hub_fast/cp_checkpoint_height` or `evm_db_hub_slow/cp_checkpoint_height` | - |
+| `hl_node_persisted_abci_height_gap` | Gauge | `comparison` | Fast minus slow checkpoint height when both files are readable | - |
+| `hl_node_persisted_freeze_abci_height` | Gauge | `source` | Height from `freeze_abci_height`; persistence does not make it a current scheduled freeze | - |
+| `hl_node_visor_height_above_persisted_freeze` | Gauge | `comparison` | Nonnegative visor height minus `freeze_abci_height`; absent until the visor has reported | - |
+| `hl_node_persisted_state_file_available` | Gauge | `file` | 1 when the file was present and held one nonnegative integer | - |
+
+The age of the last visor sample (scrape time minus the sample's `wall_clock_time`) is `hl_exporter_source_sample_age_seconds{stream="visor"}`.
+
+### Disk (`--disk-metrics`)
+
+Walks `NODE_HOME` every 120 s. Apparent size sums regular file sizes; allocated size sums unique filesystem blocks (hardlinks and sparse files counted physically). A failed walk keeps the previous snapshot. Tracked subdirectories are a fixed allowlist of the paths most likely to consume runaway disk; nested prefixes both receive a file's size.
+
+| Metric | Type | Labels | Description | Requirements |
+|--------|------|--------|-------------|--------------|
+| `hl_node_disk_used_bytes` | Gauge | - | Sum of regular file sizes under `NODE_HOME` | - |
+| `hl_node_disk_allocated_bytes` | Gauge | - | Unique allocated blocks under `NODE_HOME` | - |
+| `hl_node_disk_free_bytes` | Gauge | - | Bytes available to unprivileged users on the filesystem holding `NODE_HOME` | - |
+| `hl_node_disk_total_bytes` | Gauge | - | Filesystem size | - |
+| `hl_node_disk_subdir_bytes` | Gauge | `subdir` | Apparent size per tracked subdirectory | - |
+| `hl_node_disk_subdir_allocated_bytes` | Gauge | `path` | Allocated blocks per tracked path, deduplicated within that path | - |
+| `hl_node_disk_path_state` | Gauge | `path`, `state` | One-hot `present_nonempty`, `present_empty` or `absent` per tracked path | - |
+| `hl_node_disk_last_complete_timestamp_seconds` | Gauge | - | Unix time of the last complete walk | - |
+
+### Operator config (`--operator-config-metrics`, validator nodes only)
+
+Reads `file_mod_time_tracker/` every 5 min: presence and age of eight fixed operator-edited configs, `<file>_FAILED_LOAD` sidecars hl-node leaves when it rejects a pushed config, and the parsed `heartbeat_jailing_config.json`. All series are withdrawn when the directory does not exist.
+
+| Metric | Type | Labels | Description | Requirements |
+|--------|------|--------|-------------|--------------|
+| `hl_node_operator_config_present` | Gauge | `file` | 1 present, 0 absent, -1 when stat failed or the entry is not a regular file | Validator node |
+| `hl_node_operator_config_age_seconds` | Gauge | `file` | Seconds since the file was last modified; absent when the file is absent | Validator node |
+| `hl_node_operator_config_failed_load` | Gauge | `file` | `_FAILED_LOAD` sidecars per file; unknown names collapse to `file="unknown"`. Any non-zero value is a silent misconfiguration | Validator node |
+| `hl_node_jailing_threshold_seconds` | Gauge | - | `latency_ema_jail_threshold`: the heartbeat-ack EMA above which this validator votes to jail a peer. Divide `hl_consensus_validator_latency_ema_seconds` by it for per-peer headroom | Validator node |
+| `hl_node_jailing_dry_run` | Gauge | - | 1 when jail votes are logged but not cast | Validator node |
+
 ## Exporter Metrics
 
 | Metric | Type | Labels | Description | Requirements |
@@ -210,8 +294,9 @@ The above are available to all node types, while the below metrics require acces
 | `hl_exporter_source_up` | Gauge | `stream` | 1 when the last poll of a consumed log stream resolved and read a file without error. Distinguishes "no peers" from "source unreadable" | - |
 | `hl_exporter_source_sample_age_seconds` | Gauge | `stream` | Seconds since the last well-formed record was read from the stream | - |
 | `hl_exporter_parse_errors_total` | Counter | `stream`, `stage` | Records rejected by a stream parser. `stage` is `json`, `shape`, `timestamp`, `payload`, `record` or `row`. A rising value on a healthy node means hl-node changed a log shape | - |
+| `hl_exporter_source_errors_total` | Counter | `stream`, `stage` | Failures reading or interpreting a source (`stat`, `read`, `walk`, `statfs`, `decode`, `schema`). A missing source is not an error; it sets `hl_exporter_source_up` to 0 | - |
 
-`stream` is one of `gossip_rpc`, `gossip_connections`, `tcp_traffic`. Other streams will be added as their parsers gain the same envelope.
+`stream` is one of `gossip_rpc`, `gossip_connections`, `tcp_traffic`, `process`, `child_stderr`, `visor`, `node_state`, `disk`, `operator_config`. Parse errors apply to the three log streams; the others report non-parse failures below.
 
 ## Label Definitions
 

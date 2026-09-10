@@ -51,7 +51,8 @@ func RegisterCallbacks() error {
 			}
 
 			for stream, at := range sourceSamples {
-				o.ObserveFloat64(HLExporterSourceSampleAgeGauge, now.Sub(at).Seconds(),
+				// sample times come from log timestamps; clock skew must not go negative
+				o.ObserveFloat64(HLExporterSourceSampleAgeGauge, max(now.Sub(at).Seconds(), 0),
 					api.WithAttributes(append([]attribute.KeyValue{attribute.String("stream", stream)}, commonLabels...)...))
 			}
 

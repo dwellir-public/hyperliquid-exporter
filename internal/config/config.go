@@ -24,6 +24,12 @@ type Config struct {
 	ReplicaBufferSize      int
 	EnableValidatorRTT     bool
 	EnablePeerLatency      bool
+	EnableProcess          bool // hl-node and hl-visor liveness and resources from /proc
+	EnableChildStderr      bool // hl-visor child crash artifacts
+	EnableVisor            bool // visor sync state
+	EnableNodeState        bool // persisted node-state heights under hyperliquid_data
+	EnableDisk             bool // NODE_HOME size and filesystem capacity
+	EnableOperatorConfig   bool // file_mod_time_tracker configs, validator nodes only
 	LogLevel               string
 }
 
@@ -40,6 +46,12 @@ type Flags struct {
 	ReplicaBufferSize    int
 	EnableValidatorRTT   *bool // to distinguish between not set and false
 	EnablePeerLatency    *bool
+	EnableProcess        bool
+	EnableChildStderr    bool
+	EnableVisor          bool
+	EnableNodeState      bool
+	EnableDisk           bool
+	EnableOperatorConfig bool
 	LogLevel             string
 }
 
@@ -96,6 +108,12 @@ func LoadConfig(flags *Flags) Config {
 		ReplicaDataDir:         replicaDataDir,
 		ReplicaBufferSize:      replicaBufferSize,
 		EnableValidatorRTT:     false,
+		EnableProcess:          flags.EnableProcess,
+		EnableChildStderr:      flags.EnableChildStderr,
+		EnableVisor:            flags.EnableVisor,
+		EnableNodeState:        flags.EnableNodeState,
+		EnableDisk:             flags.EnableDisk,
+		EnableOperatorConfig:   flags.EnableOperatorConfig,
 		LogLevel:               flags.LogLevel,
 	}
 

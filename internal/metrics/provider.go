@@ -10,7 +10,7 @@ var (
 )
 
 func getAllObservables() []api.Observable {
-	return []api.Observable{
+	return append(nodeObservables, []api.Observable{
 		// Core L1 metrics
 		HLCoreBlockHeightGauge,
 		HLCoreLatestBlockTimeGauge,
@@ -106,7 +106,7 @@ func getAllObservables() []api.Observable {
 
 		// monitor health metrics
 		HLConsensusMonitorLastProcessedGauge,
-	}
+	}...)
 }
 
 func getCommonLabels() []attribute.KeyValue {

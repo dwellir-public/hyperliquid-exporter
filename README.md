@@ -24,6 +24,14 @@ OPTIONS:
   --validator-rtt      Enable validator RTT monitoring
   --peer-latency       Enable peer latency monitoring (TCP probes to known peers)
   --otlp               Enable OTLP export (requires --alias and --otlp-endpoint)
+
+  Node-host monitors, on by default, each disabled with --<flag>=false:
+  --process-metrics          hl-node and hl-visor liveness and resources from /proc
+  --child-stderr-metrics     hl-visor child crash artifacts
+  --visor-metrics            hl-visor sync state from visor_abci_state.json
+  --node-state-metrics       Persisted checkpoint and freeze heights under hyperliquid_data
+  --disk-metrics             NODE_HOME size per subdirectory and filesystem capacity
+  --operator-config-metrics  Operator config presence, age and jailing threshold (validators)
 ```
 
 Run `./bin/hyperliquid-exporter start --help` for a complete list of flags.

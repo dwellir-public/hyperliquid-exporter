@@ -1,8 +1,8 @@
 # Upstream Port Plan (validaoxyz v3.0.0 to v4.1.1)
 
-**Date:** 2026-09-10
+**Date:** 2026-09-11
 **Commit:** 447a838 (main), upstream/main at b150dcc (v4.1.1)
-**Status:** phases 1 and 2 landed on branch `upstream-port-sep26` (commits `9bd985e`, `1696ea7`), unreleased. Phase 3 is next; see Handoff. Phases are release-sized units; version numbers are assigned at release prep, not here.
+**Status:** phases 1 to 5 landed on branch `upstream-port-sep26` (commits `2b11c0c`, `1696ea7`, `42b119e`, `28c558d`, `6911bde`), unreleased. Phase 6 is next; see Handoff. Phases are release-sized units; version numbers are assigned at release prep, not here.
 
 ## TL;DR
 
@@ -66,7 +66,9 @@ Settled here so implementers do not re-derive them.
 - **Flags.** One flag per new monitor. Default on for monitors that only read local files or procfs (process, child_stderr, visor, node_state, disk, operator_config, crit_msg, snapshot_status). Default off for anything that touches the network (`--binary-metrics`, `--probe-info-endpoint`). No umbrella `--extended-metrics` flag.
 - **`--binary-metrics` default off, now.** The current update checker downloads hl-visor every cycle and compares the wrong binaries. Off is the correct default until the charm exposes the flag.
 - **Validator-only monitors** (operator_config, accumulator_consensus) start only when `config.IsValidator` is true. No new flag; the identity check at `cmd/hyperliquid-exporter/main.go:145` already exists.
-- **Series sweep gate.** Peer and connectivity series already remove themselves (`peermon/monitor.go:195`, `gossip_monitor.go:228-305`, `parent_peer_monitor.go:182`, `consensus_monitor.go:854`). The only unbounded labeled families are per-validator gauges, so 3.4 is the sole prerequisite for deleting the sweep in 2.3.
+- **Series sweep gate.** Peer and connectivity series already remove themselves (`peermon/monitor.go:195`, `gossip_monitor.go:228-305`, `parent_peer_monitor.go:182`, `consensus_monitor.go:854`). The only unbounded labeled families are per-validator gauges, so 3.4 is the sole prerequisite for deleting the sweep in 2.3. Review in phase 3 found `hl_consensus_heartbeat_status` (keyed `<validator>_<status_type>`) missing from that inventory; `RemoveValidatorSeries` covers it.
+- **Parse-error counter naming.** 4.4's `hl_p2p_gossip_parse_errors_total{stage}` was not created. 7.2's generalized `hl_exporter_parse_errors_total{stream,stage}` landed in phase 4 instead, with `hl_exporter_source_up{stream}`, `hl_exporter_source_sample_age_seconds{stream}` and (phase 5) `hl_exporter_source_errors_total{stream,stage}` as the envelope for every source. Tier 5 monitors use this envelope instead of upstream's per-monitor `*_scan_up`, `*_walk_up`, `*_errors_total` and `*_last_observation_age_seconds` gauges; the omitted names are listed in `docs/metrics-overview.md`.
+- **Tier 5 flags.** `--process-metrics`, `--child-stderr-metrics`, `--visor-metrics`, `--node-state-metrics`, `--disk-metrics`, `--operator-config-metrics`, all default on. The charm does not yet expose them (Follow-ups).
 - **Rescan gate value (2.1).** 2 s for call sites inside EOF loops (block, consensus, replica, evm, proposal, round_advance, validator_status). No gate for pollers that already sleep 30 s or more (gossip, validator_ip).
 - **0.3 before 4.1.** 0.3 is the hl-node schema break and ships in phase 1 as a two-line patch. 4.1 rewrites the same file but depends on the 2.1 resolver, so it stays in phase 2 and absorbs 0.3 there.
 - **Fixtures for schema watch (7.2).** Commit a trimmed sample (about 20 lines per stream) under `internal/monitors/testdata/schema/` so the drift test runs in CI. The full hour pulled by the routine stays gitignored under `testdata/live/` for local runs.
@@ -433,39 +435,42 @@ Phases intentionally cut across tiers. Tiers rank items by severity and category
 
 1. **Safety and schema (done, `9bd985e`):** 1.1, Tier 0 complete, 1.3, 1.4, 1.6, 3.6. Verified on a mainnet non-validator node: clean startup, no panics. Validator-side checks (validator count, timeout rounds, signer mapping) still need a validator node.
 2. **Perf and tailing (done, `1696ea7`):** 2.1, 2.2, 4.1, 4.2, 4.3, 4.7 child reset. No pre-change CPU baseline was recorded. Post-change on a mainnet non-validator node with EVM, replica and peer latency enabled: about 13% CPU, 34 MB RSS, 28 goroutines.
-3. **Metric correctness:** 3.1, 3.2, 3.5, 1.5, 3.4, then 2.3. Changelog must call out that operation counts drop 2 to 6x.
-4. **Peer quality:** 4.4, 4.5, 4.6, rest of 4.7, 1.8.
-5. **New monitors:** Tier 5 ranks 1 to 5, each behind its own flag per Decisions. Charm gains the new flags.
+3. **Metric correctness (done, `42b119e`):** 3.1, 3.2, 3.5, 1.5, 3.4, then 2.3. Not verified on a live node.
+4. **Peer quality (done, `28c558d`):** 4.4, 4.5, 4.6, rest of 4.7, 1.8. Not verified on a live node.
+5. **New monitors (done, `6911bde`):** Tier 5 ranks 1 to 5 as six monitors (visor and node_state each got a flag). Charm flags are a follow-up. Not verified on a live node.
 6. **Infra and routines:** Tier 6, Tier 7. 3.7, 3.8, 2.4 and Tier 5 ranks 6 to 10 as capacity allows.
 
 ## Handoff
 
-Read this before starting phase 3. Everything above the phase list is still the spec; this section is what an implementer needs that the spec does not say.
+Read this before starting phase 6. Everything above the phase list is still the spec; this section is what an implementer needs that the spec does not say.
 
-**Where things are.** Branch `upstream-port-sep26`, two commits on top of `447a838`. `CHANGELOG.md` Unreleased holds entries for both phases plus the earlier contracts removal; keep adding there. `docs/metrics-overview.md` is hand-maintained until 6.5 lands; update it for every metric or label change.
+**Where things are.** Branch `upstream-port-sep26`, five commits on top of `447a838`. `CHANGELOG.md` Unreleased holds entries for all five phases plus the earlier contracts removal; keep adding there. `docs/metrics-overview.md` is hand-maintained until 6.5 lands and is current as of phase 5; update it for every metric or label change. `README.md` lists the six new flags.
 
-**Conventions established in phases 1 and 2.**
+**Conventions established in phases 1 to 5.**
 
 - Every goroutine launch goes through `safego.Go(component, fn)`. Package `metrics` cannot use it (import cycle); its cleanup ticker stays bare.
 - Latest-file lookup is `utils.LatestFile(root)`; tight EOF loops use `utils.NewLatestFileCache(root, latestFileRescan)`. Do not reintroduce `filepath.Walk`.
-- Polling monitors keep their position in a `tailState` and read through `tailState.poll`; startup seeding passes `seeding=true` to suppress counters. New tailers follow the same shape.
+- Polling monitors keep their position in a `tailState` and read through `tailState.poll`; startup seeding passes `seeding=true` to suppress counters, including parse-error counters. `tcp_traffic` is read once by `TCPTrafficMonitor` and fanned out to `tcpTrafficConsumer` implementations (`onRecord`, `onPoll`); add a consumer rather than a second tailer.
+- Shared parse helpers live in `internal/monitors/parse_helpers.go` (`unmarshalRequiredJSON`, `parseVisorTime`, `rawJSONArray`, `rawJSONObject`).
+- Every consumed source reports `metrics.SetSourceUp(stream, bool)`, `metrics.MarkSourceSample(stream, at)` on a good record, `metrics.IncrementParseErrors(stream, stage)` for rejected records and `metrics.IncrementSourceErrors(stream, stage)` for stat/read/walk/decode failures. Streams so far: `gossip_rpc`, `gossip_connections`, `tcp_traffic`, `process`, `child_stderr`, `visor`, `node_state`, `disk`, `operator_config`. Block, consensus, replica, EVM and status streams are not yet on the envelope; 7.2 wants them.
+- Metrics for ported monitors are declared in `internal/metrics/node_instruments.go` with the local `gauge`/`counter` closures and published through `metrics.SetGauge`, `ClearGauge`, `SetGaugeSeries`, `ClearGaugeSeries`, `AddCounter`. A missing optional field withdraws its gauge (absent, not zero). `GaugeValue` and `GaugeSeriesValue` exist for tests.
+- Per-validator series are reconciled by `dropMissing(known, seen, remove)`; an empty snapshot removes nothing.
+- Per-`peer_ip` gossip series publish only with `--peer-latency` (`perIP` field on the gossip monitors).
 - Action types pass through `actiontypes.Normalize`; categories come from `actiontypes.Category`.
 - Round advance events are handled in `consensus_monitor.processConsensusLine` (`round_advance.go`). There is no standalone round advance monitor.
 - Tests use `initTestMetrics(t)` from `helpers_test.go`; fixtures are inline strings shaped like real log lines. Every schema change gets a case in the old and the new shape.
 - Each phase ends with `make lint`, `make test RACE=1`, a low-effort multi-engine review, fixes, then one commit with a single-line conventional message. Do not mention the plan or phase in the message.
 
-**Phase 3 pointers (metric correctness).** Order: 3.1, 3.2, 3.5, 1.5, 3.4, then 2.3.
+**Phase 6 pointers (infra and routines).**
 
-- 3.1: `countJSONArrayElements` in `internal/replica/parser.go` is the bug; `TestCountNestedObjects` in `parser_test.go` currently pins the wrong behavior and must change. Changelog must say operation counts drop 2 to 6x.
-- 3.2: `GetValidatorName` in `internal/metrics/getters.go` returns "". `validatorInfoCache` is populated by `validator_api_monitor.go`; check what key it uses before wiring.
-- 3.5: the vote-age gauge needs an observable gauge with a callback; see `internal/metrics/callbacks.go` for the existing pattern.
-- 1.5: consensus maps `qcSignatures`, `tcVotes`, `validatorCache` in `consensus_monitor.go`; `internal/cache` has the LRU.
-- 3.4: only per-validator gauges are unbounded now (Decisions). Add `RemoveValidatorSeries` next to the existing `Remove*` helpers in `setters.go` and call it from `validator_api_monitor.go` and `validator_latency_monitor.go` on set difference.
-- 2.3: delete the sweep in `internal/metrics/types.go` and `cleanup_test.go` only after 3.4 is in.
+- 6.1 CI: our workflow is `.github/workflows/ci-tests.yml`. Add govulncheck, `go mod tidy -diff`, arm64 build, SHA-pinned actions; copy `up:.github/dependabot.yml`.
+- 6.3 self-observability: `internal/metrics/prometheus.go` serves `/metrics` and a static `/health`. Build info lives in `cmd/hyperliquid-exporter/main.go` (`printBuildInfo`). `/readyz` can key off `hl_exporter_source_up`.
+- 6.4 alerts: start with `HyperliquidCoreHeightStalled` and `HyperliquidCoreHeightSlow` from `up:alerts/hyperliquid-core.rules.yml`; upstream's process-down rule (`hl_node_process_up`) now applies unchanged.
+- 6.5 generated docs: the generator must understand both the verbose `meter.X(...)` declarations in `instruments.go` and the `gauge(name, desc)` closure style in `node_instruments.go`.
+- 7.2 schema watch: `hl_exporter_parse_errors_total` exists; the block, consensus, replica, EVM and status parsers still need to count into it before the drift test is meaningful.
+- Leftovers as capacity allows: 3.7 (`--binary-metrics`, default off), 3.8 heartbeat ack correlation, 2.4 consensus lock batching, Tier 5 ranks 6 to 10.
 
-**Phase 4 note.** 4.1 is done. 4.7's child reset is done. The rest of Tier 4 is untouched.
-
-**Open verification debt.** Validator-node checks from phase 1 acceptance, and a CPU before/after with the pre-phase-2 build if a baseline is still wanted.
+**Open verification debt.** Nothing from phases 3 to 5 has run on a live node. Before release: a mainnet non-validator (parent selection stability, admission gate registering the expected peers, disk walk duration on a full NODE_HOME, process gauges) and a validator (validator count, timeout rounds, signer mapping, proposer `name`, one order counts as one operation, jailing threshold). Also the phase 1 validator checks and the CPU baseline if still wanted.
 
 ## Testing Decisions
 
@@ -487,10 +492,11 @@ Read this before starting phase 3. Everything above the phase list is still the 
 
 ## Open Questions
 
-- Should `hl_node_parent_peer_*` gain an explicit `inferred` note in HELP text given upstream's causality argument (4.5)? Leaning yes; decide when 4.5 lands.
+- Resolved in phase 4: `hl_node_parent_peer` HELP text and `docs/metrics-overview.md` state that the parent is inferred from dominant inbound volume, not a protocol identity.
 
 ## Follow-ups
 
 Out of scope here, tracked so they are not lost:
 
+- Expose the six Tier 5 flags in the charm (`dwellir-public/ops`, `juju/charms/hyperliquid-metrics-exporter`) so operators can disable a monitor without editing service args.
 - Survey our other Go repos for CI improvements made since this repo's workflows were written: `bcm-probe`, `dwellir-admin-dashboard` (has `schema-drift.yml`), `hyperliquid-archiver`, `hyperliquid-index`, `hyperliquid-l1-gateway`, `hyperliquid-rest-server`, `iris`. Diff each `.github/workflows/` against ours and pick up shared steps. Separate plan; touches Tier 6.1 only.

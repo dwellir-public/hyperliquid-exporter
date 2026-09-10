@@ -125,6 +125,26 @@ func Start(ctx context.Context, cfg config.Config) {
 		})
 	}
 
+	// node-host monitors: local files and procfs only, each behind its own flag
+	if cfg.EnableProcess {
+		safego.Go("process", func() { monitors.StartProcessMonitor(monitorCtx) })
+	}
+	if cfg.EnableChildStderr {
+		safego.Go("child-stderr", func() { monitors.StartChildStderrMonitor(monitorCtx, &cfg) })
+	}
+	if cfg.EnableVisor {
+		safego.Go("visor", func() { monitors.StartVisorMonitor(monitorCtx, &cfg) })
+	}
+	if cfg.EnableNodeState {
+		safego.Go("node-state", func() { monitors.StartNodeStateMonitor(monitorCtx, &cfg) })
+	}
+	if cfg.EnableDisk {
+		safego.Go("disk", func() { monitors.StartDiskMonitor(monitorCtx, &cfg) })
+	}
+	if cfg.EnableOperatorConfig && metrics.IsValidator() {
+		safego.Go("consensus", func() { monitors.StartOperatorConfigMonitor(monitorCtx, &cfg) })
+	}
+
 	logger.InfoComponent("system", "Exporter is now running")
 
 	// start memory monitoring

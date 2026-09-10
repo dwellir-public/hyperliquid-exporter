@@ -1136,5 +1136,5 @@ func createInstruments() error {
 		return fmt.Errorf("failed to create parent peer challenger ratio gauge: %w", err)
 	}
 
-	return nil
+	return createNodeInstruments()
 }

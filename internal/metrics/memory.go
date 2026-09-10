@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
@@ -66,10 +67,27 @@ func InitMemoryMetrics(meter metric.Meter) error {
 	return nil
 }
 
-// callback function that collects memory stats
-func collectMemoryStats(ctx context.Context, observer metric.Observer) error {
+// memStats is refreshed by StartMemoryMonitoring every 30 s so the scrape
+// path never pays for runtime.ReadMemStats, which stops the world.
+var (
+	memStatsMu sync.RWMutex
+	memStats   runtime.MemStats
+)
+
+func refreshMemStats() runtime.MemStats {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
+	memStatsMu.Lock()
+	memStats = m
+	memStatsMu.Unlock()
+	return m
+}
+
+// callback function that collects memory stats
+func collectMemoryStats(ctx context.Context, observer metric.Observer) error {
+	memStatsMu.RLock()
+	m := memStats
+	memStatsMu.RUnlock()
 
 	// record heap objects
 	observer.ObserveInt64(HLGoHeapObjects, int64(m.HeapObjects))
@@ -92,14 +110,14 @@ func StartMemoryMonitoring(ctx context.Context) {
 
 	lastGoroutineCount := runtime.NumGoroutine()
 	goroutineGrowthWarnings := 0
+	refreshMemStats()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			var m runtime.MemStats
-			runtime.ReadMemStats(&m)
+			m := refreshMemStats()
 
 			currentGoroutines := runtime.NumGoroutine()
 

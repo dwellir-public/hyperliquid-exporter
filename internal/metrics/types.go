@@ -1,7 +1,6 @@
 package metrics
 
 import (
-	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -125,8 +124,6 @@ func StartMetricsCleanup() {
 	go func() {
 		for range cleanupTicker.C {
 			cleanupLabeledValues()
-			// also trigger a manual GC after cleanup to free memory more aggressively
-			runtime.GC()
 		}
 	}()
 }

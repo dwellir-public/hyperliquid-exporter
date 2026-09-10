@@ -221,7 +221,7 @@ func TestOutboundPeersMonitor_SeedSuppression(t *testing.T) {
 	require.NoError(t, os.WriteFile(f, []byte(content), 0o644))
 
 	// seed pass: counters suppressed, discovery still happens
-	_, err := m.processFile(f, 0, true)
+	offset, err := m.processFile(f, 0, true)
 	require.NoError(t, err)
 
 	assert.Empty(t, *traffic, "seed pass must not emit traffic volume counters")
@@ -234,7 +234,7 @@ func TestOutboundPeersMonitor_SeedSuppression(t *testing.T) {
 `
 	require.NoError(t, os.WriteFile(f, []byte(liveContent), 0o644))
 
-	_, err = m.processFile(f, m.lastOffset, false)
+	_, err = m.processFile(f, offset, false)
 	require.NoError(t, err)
 
 	require.Len(t, *active, 1)

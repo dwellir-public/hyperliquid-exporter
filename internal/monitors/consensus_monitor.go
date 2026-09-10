@@ -160,6 +160,7 @@ func (m *ConsensusMonitor) monitorConsensusLogs(ctx context.Context, errCh chan<
 	}
 
 	logger.InfoComponent("consensus", "Starting comprehensive consensus monitoring in: %s", consensusDir)
+	files := utils.NewLatestFileCache(consensusDir, latestFileRescan)
 
 	var currentFile string
 	var file *os.File
@@ -175,7 +176,7 @@ func (m *ConsensusMonitor) monitorConsensusLogs(ctx context.Context, errCh chan<
 			return
 		default:
 			// find the latest log file
-			latestFile, err := m.getLatestConsensusLogFile()
+			latestFile, err := files.Get()
 			if err != nil {
 				if errors.Is(err, os.ErrNotExist) {
 					time.Sleep(10 * time.Second)
@@ -542,12 +543,6 @@ func (m *ConsensusMonitor) loadValidatorMappings() error {
 	return nil
 }
 
-// returns the path to the latest consensus log file
-func (m *ConsensusMonitor) getLatestConsensusLogFile() (string, error) {
-	consensusDir := filepath.Join(m.config.NodeHome, "data", "node_logs", "consensus", "hourly")
-	return utils.GetLatestFile(consensusDir)
-}
-
 // addQCWindowEntry adds a new QC entry to the sliding window
 func (m *ConsensusMonitor) addQCWindowEntry(signers []string) {
 	entry := qcWindowEntry{
@@ -690,6 +685,7 @@ func (m *ConsensusMonitor) monitorStatusLogs(ctx context.Context, errCh chan<- e
 	}
 
 	logger.InfoComponent("consensus", "Starting status log monitoring in: %s", statusDir)
+	files := utils.NewLatestFileCache(statusDir, latestFileRescan)
 
 	var currentFile string
 	var openFile *os.File
@@ -702,7 +698,7 @@ func (m *ConsensusMonitor) monitorStatusLogs(ctx context.Context, errCh chan<- e
 			return
 		default:
 			// find latest log file
-			latestFile, err := utils.GetLatestFile(statusDir)
+			latestFile, err := files.Get()
 			if err != nil {
 				if errors.Is(err, os.ErrNotExist) {
 					time.Sleep(10 * time.Second)

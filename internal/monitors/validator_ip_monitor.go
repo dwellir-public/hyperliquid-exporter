@@ -104,7 +104,7 @@ func StartValidatorIPMonitor(ctx context.Context, cfg config.Config, errCh chan<
 }
 
 func processLatestState(ctx context.Context, stateDir string, currentFile *string, reader *abci.Reader) error {
-	latestFile, err := utils.GetLatestFile(stateDir)
+	latestFile, err := utils.LatestFile(stateDir)
 	if err != nil {
 		logger.ErrorComponent("consensus", "Error finding latest state file in dir %s: %v", stateDir, err)
 		return fmt.Errorf("error finding latest state file: %w", err)

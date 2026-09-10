@@ -123,7 +123,7 @@ func readValidatorStatus(nodeHome string) error {
 		return nil
 	}
 
-	latestFile, err := utils.GetLatestFile(statusDir)
+	latestFile, err := utils.LatestFile(statusDir)
 	if err != nil {
 		metrics.SetIsValidator(false)
 		metrics.SetValidatorAddress("")
@@ -275,7 +275,7 @@ func GetValidatorStatus(nodeHome string) (string, bool) {
 		return "", false
 	}
 
-	latestFile, err := utils.GetLatestFile(statusDir)
+	latestFile, err := utils.LatestFile(statusDir)
 	if err != nil {
 		// only log debug since missing status files are normal for non-validator nodes
 		logger.DebugComponent("consensus", "Error finding latest status file: %v", err)
@@ -355,7 +355,7 @@ func PopulateSignerMappings(nodeHome string) error {
 		return nil
 	}
 
-	latestFile, err := utils.GetLatestFile(statusDir)
+	latestFile, err := utils.LatestFile(statusDir)
 	if err != nil {
 		logger.WarningComponent("consensus", "Error finding latest status file for mapping population: %v", err)
 		return nil // non-fatal, monitors will populate mappings later

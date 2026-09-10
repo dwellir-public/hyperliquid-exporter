@@ -10,14 +10,14 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/utils"
 )
 
 // ParentPeerMonitor identifies the node's primary upstream peer by analyzing
 // tcp_traffic byte volumes. The peer delivering the most inbound data is the parent.
 type ParentPeerMonitor struct {
 	dir           string
-	lastFile      string
-	lastOffset    int64
+	tail          tailState
 	currentParent string
 	parentSince   time.Time
 	setParentPeer func(string)
@@ -48,14 +48,14 @@ func (m *ParentPeerMonitor) monitor(ctx context.Context) {
 
 	// seed from latest file on startup; suppress volume counter emission since
 	// Prometheus already recorded these samples pre-restart
-	if filePath, err := getLatestHourlyLogFile(m.dir); err == nil && filePath != "" {
-		m.lastFile = filePath
+	if filePath, err := utils.LatestFile(m.dir); err == nil && filePath != "" {
+		m.tail.path = filePath
 		logger.InfoComponent("parent-peer", "Processing %s", filePath)
 		newOffset, err := m.processFile(filePath, 0, true)
 		if err != nil {
 			logger.DebugComponent("parent-peer", "Error processing tcp_traffic: %v", err)
 		} else {
-			m.lastOffset = newOffset
+			m.tail.offset = newOffset
 		}
 	}
 
@@ -70,18 +70,19 @@ func (m *ParentPeerMonitor) monitor(ctx context.Context) {
 }
 
 func (m *ParentPeerMonitor) poll() {
-	filePath, err := getLatestHourlyLogFile(m.dir)
+	filePath, err := utils.LatestFile(m.dir)
 	if err != nil || filePath == "" {
 		return
 	}
 
-	if filePath != m.lastFile {
+	if filePath != m.tail.path {
 		logger.InfoComponent("parent-peer", "Switching to %s", filePath)
-		m.lastFile = filePath
-		m.lastOffset = 0
 	}
 
-	if _, err := m.processFile(filePath, m.lastOffset, false); err != nil {
+	err = m.tail.poll(filePath, func(path string, offset int64) (int64, error) {
+		return m.processFile(path, offset, false)
+	})
+	if err != nil {
 		logger.DebugComponent("parent-peer", "Error reading tcp_traffic: %v", err)
 	}
 
@@ -122,7 +123,6 @@ func (m *ParentPeerMonitor) processFile(filePath string, offset int64, seeding b
 		m.updateParent(bestIP, bestBytes)
 	}
 
-	m.lastOffset = newOffset
 	return newOffset, nil
 }
 

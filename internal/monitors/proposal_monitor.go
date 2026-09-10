@@ -42,13 +42,14 @@ func StartProposalMonitor(ctx context.Context, cfg config.Config, errCh chan<- e
 		var fileReader *bufio.Reader
 		isFirstRun := true
 
+		files := utils.NewLatestFileCache(logsDir, latestFileRescan)
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			default:
 				// check for new files
-				latestFile, err := utils.GetLatestFile(logsDir)
+				latestFile, err := files.Get()
 				if err != nil {
 					errCh <- fmt.Errorf("error finding latest proposal log file: %w", err)
 					time.Sleep(1 * time.Second)

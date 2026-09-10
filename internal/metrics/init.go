@@ -33,6 +33,9 @@ func InitMetrics(ctx context.Context, cfg MetricsConfig) error {
 		return fmt.Errorf("failed to initialize instruments: %w", err)
 	}
 
+	// take the first memory snapshot before any scrape can observe zeros
+	refreshMemStats()
+
 	if cfg.EnablePrometheus {
 		if err := StartPrometheusServer(ctx, 8086); err != nil {
 			return fmt.Errorf("failed to start Prometheus server: %w", err)

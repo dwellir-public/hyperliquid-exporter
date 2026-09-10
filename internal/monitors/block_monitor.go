@@ -85,13 +85,14 @@ func monitorBlockState(ctx context.Context, cfg config.Config, errCh chan<- erro
 		return
 	}
 
+	files := utils.NewLatestFileCache(blockTimeDir, latestFileRescan)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 			// check for new files
-			latestFile, err := utils.GetLatestFile(blockTimeDir)
+			latestFile, err := files.Get()
 			if err != nil {
 				errCh <- fmt.Errorf("error finding latest %s block time file: %w", stateType, err)
 				time.Sleep(1 * time.Second)
@@ -281,13 +282,14 @@ func monitorLegacyBlockState(ctx context.Context, cfg config.Config, errCh chan<
 
 	logger.InfoComponent("core", "Starting legacy block monitor for directory: %s", blockTimeDir)
 
+	files := utils.NewLatestFileCache(blockTimeDir, latestFileRescan)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 			// check for new files
-			latestFile, err := utils.GetLatestFile(blockTimeDir)
+			latestFile, err := files.Get()
 			if err != nil {
 				errCh <- fmt.Errorf("error finding latest block time file: %w", err)
 				time.Sleep(1 * time.Second)

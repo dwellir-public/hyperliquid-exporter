@@ -11,6 +11,7 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/peermon"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/utils"
 )
 
 // timeLayout matches the tcp_traffic line timestamp format.
@@ -18,8 +19,7 @@ const timeLayout = "2006-01-02T15:04:05.999999999"
 
 type OutboundPeersMonitor struct {
 	dir          string
-	lastFile     string
-	lastOffset   int64
+	tail         tailState
 	registerPeer func(string, peermon.PeerDirection)
 	seen         map[string]struct{}
 	lastLineTS   time.Time
@@ -55,13 +55,13 @@ func (m *OutboundPeersMonitor) monitor(ctx context.Context) {
 	defer ticker.Stop()
 
 	// process the latest entry immediately to seed peers on startup
-	if filePath, err := getLatestHourlyLogFile(m.dir); err == nil && filePath != "" {
-		m.lastFile = filePath
+	if filePath, err := utils.LatestFile(m.dir); err == nil && filePath != "" {
+		m.tail.path = filePath
 		logger.InfoComponent("gossip", "Outbound peer monitor processing %s", filePath)
 		if newOffset, err := m.processFile(filePath, 0, true); err != nil {
 			logger.DebugComponent("gossip", "Error processing tcp_traffic: %v", err)
 		} else {
-			m.lastOffset = newOffset
+			m.tail.offset = newOffset
 		}
 	}
 
@@ -76,18 +76,19 @@ func (m *OutboundPeersMonitor) monitor(ctx context.Context) {
 }
 
 func (m *OutboundPeersMonitor) poll() {
-	filePath, err := getLatestHourlyLogFile(m.dir)
+	filePath, err := utils.LatestFile(m.dir)
 	if err != nil || filePath == "" {
 		return
 	}
 
-	if filePath != m.lastFile {
+	if filePath != m.tail.path {
 		logger.InfoComponent("gossip", "Outbound peer monitor switching to %s", filePath)
-		m.lastFile = filePath
-		m.lastOffset = 0
 	}
 
-	if _, err := m.processFile(filePath, m.lastOffset, false); err != nil {
+	err = m.tail.poll(filePath, func(path string, offset int64) (int64, error) {
+		return m.processFile(path, offset, false)
+	})
+	if err != nil {
 		logger.DebugComponent("gossip", "Error reading tcp_traffic: %v", err)
 	}
 }
@@ -185,7 +186,6 @@ func (m *OutboundPeersMonitor) processFile(filePath string, offset int64, seedin
 		m.register(pe.ip, pe.dir)
 	}
 
-	m.lastOffset = newOffset
 	return newOffset, nil
 }
 

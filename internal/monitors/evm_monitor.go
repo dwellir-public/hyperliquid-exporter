@@ -61,6 +61,7 @@ func StartEVMMonitor(ctx context.Context, cfg config.Config, errCh chan<- error)
 		var fileReader *bufio.Reader
 		isFirstRun := true
 
+		files := utils.NewLatestFileCache(evmDataDir, latestFileRescan)
 		for {
 			select {
 			case <-ctx.Done():
@@ -69,7 +70,7 @@ func StartEVMMonitor(ctx context.Context, cfg config.Config, errCh chan<- error)
 				time.Sleep(1 * time.Second)
 
 				// find the latest file in the directory
-				latestFile, err := utils.GetLatestFile(evmDataDir)
+				latestFile, err := files.Get()
 				if err != nil {
 					errCh <- fmt.Errorf("error finding latest EVM data file: %w", err)
 					continue

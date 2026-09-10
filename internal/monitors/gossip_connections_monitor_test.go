@@ -28,7 +28,7 @@ func TestProcessConnectionsFile_HandleStreamConnection(t *testing.T) {
 	}
 
 	f := writeGossipFile(t, filepath.Join(m.dir, "20260330"), lines...)
-	newOffset, err := m.processFile(f, 0)
+	newOffset, err := m.processFile(f, 0, false)
 	require.NoError(t, err)
 	assert.Greater(t, newOffset, int64(0))
 }
@@ -41,7 +41,7 @@ func TestProcessConnectionsFile_VerifiedGossipRPC(t *testing.T) {
 	}
 
 	f := writeGossipFile(t, filepath.Join(m.dir, "20260330"), lines...)
-	newOffset, err := m.processFile(f, 0)
+	newOffset, err := m.processFile(f, 0, false)
 	require.NoError(t, err)
 	assert.Greater(t, newOffset, int64(0))
 }
@@ -65,7 +65,7 @@ func TestProcessConnectionsFile_RegistersPeer(t *testing.T) {
 	}
 
 	f := writeGossipFile(t, filepath.Join(m.dir, "20260330"), lines...)
-	_, err := m.processFile(f, 0)
+	_, err := m.processFile(f, 0, false)
 	require.NoError(t, err)
 
 	mu.Lock()
@@ -81,7 +81,7 @@ func TestProcessConnectionsFile_SkipsPerformingChecks(t *testing.T) {
 	}
 
 	f := writeGossipFile(t, filepath.Join(m.dir, "20260330"), lines...)
-	newOffset, err := m.processFile(f, 0)
+	newOffset, err := m.processFile(f, 0, false)
 	require.NoError(t, err)
 	assert.Greater(t, newOffset, int64(0))
 }
@@ -95,12 +95,12 @@ func TestProcessConnectionsFile_OffsetTracking(t *testing.T) {
 
 	f := writeGossipFile(t, filepath.Join(m.dir, "20260330"), lines...)
 
-	offset1, err := m.processFile(f, 0)
+	offset1, err := m.processFile(f, 0, false)
 	require.NoError(t, err)
 	assert.Greater(t, offset1, int64(0))
 
 	// no new data
-	offset2, err := m.processFile(f, offset1)
+	offset2, err := m.processFile(f, offset1, false)
 	require.NoError(t, err)
 	assert.Equal(t, offset1, offset2)
 
@@ -111,7 +111,7 @@ func TestProcessConnectionsFile_OffsetTracking(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fh.Close())
 
-	offset3, err := m.processFile(f, offset2)
+	offset3, err := m.processFile(f, offset2, false)
 	require.NoError(t, err)
 	assert.Greater(t, offset3, offset2)
 }
@@ -126,7 +126,7 @@ func TestProcessConnectionsFile_MixedEvents(t *testing.T) {
 	}
 
 	f := writeGossipFile(t, filepath.Join(m.dir, "20260330"), lines...)
-	newOffset, err := m.processFile(f, 0)
+	newOffset, err := m.processFile(f, 0, false)
 	require.NoError(t, err)
 	assert.Greater(t, newOffset, int64(0))
 }
@@ -142,7 +142,7 @@ func TestProcessConnectionsFile_MalformedLines(t *testing.T) {
 	}
 
 	f := writeGossipFile(t, filepath.Join(m.dir, "20260330"), lines...)
-	newOffset, err := m.processFile(f, 0)
+	newOffset, err := m.processFile(f, 0, false)
 	require.NoError(t, err)
 	assert.Greater(t, newOffset, int64(0))
 }
@@ -156,7 +156,7 @@ func TestProcessConnectionsFile_PartialLineRetry(t *testing.T) {
 	partial := `["2026-03-30T05:00:09.841",["verified gossip rpc",{"Ip":"192.168.108.236"}]]`
 	require.NoError(t, os.WriteFile(f, []byte(partial), 0o644))
 
-	offset1, err := m.processFile(f, 0)
+	offset1, err := m.processFile(f, 0, false)
 	require.NoError(t, err)
 	assert.Zero(t, offset1)
 
@@ -166,7 +166,7 @@ func TestProcessConnectionsFile_PartialLineRetry(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fh.Close())
 
-	offset2, err := m.processFile(f, offset1)
+	offset2, err := m.processFile(f, offset1, false)
 	require.NoError(t, err)
 	assert.Greater(t, offset2, offset1)
 }
@@ -178,13 +178,38 @@ func TestProcessConnectionsFile_TruncationResetsOffset(t *testing.T) {
 		`["2026-03-30T05:00:03.399",["handle_stream_connection","192.168.108.167:50850","gossip"]]`,
 	)
 
-	offset1, err := m.processFile(f, 0)
+	offset1, err := m.processFile(f, 0, false)
 	require.NoError(t, err)
 	assert.Greater(t, offset1, int64(0))
 
 	require.NoError(t, os.WriteFile(f, []byte(`["2026-03-30T05:01:03.415",["verified gossip rpc",{"Ip":"10.0.0.5"}]]`+"\n"), 0o644))
 
-	offset2, err := m.processFile(f, offset1)
+	offset2, err := m.processFile(f, offset1, false)
 	require.NoError(t, err)
 	assert.Greater(t, offset2, int64(0))
+}
+
+func TestProcessConnectionsFile_SeedingRegistersWithoutCounting(t *testing.T) {
+	initTestMetrics(t)
+	var (
+		mu   sync.Mutex
+		seen []string
+	)
+	m := NewGossipConnectionsMonitor(&config.Config{NodeHome: t.TempDir()}, func(ip string, _ peermon.PeerDirection) {
+		mu.Lock()
+		defer mu.Unlock()
+		seen = append(seen, ip)
+	})
+	lines := []string{
+		`["2026-03-30T05:00:03.399",["handle_stream_connection","192.168.108.167:50850","gossip"]]`,
+		`["2026-03-30T05:00:09.841",["verified gossip rpc",{"Ip":"192.168.108.236"}]]`,
+	}
+	f := writeGossipFile(t, filepath.Join(m.dir, "20260330"), lines...)
+	offset, err := m.processFile(f, 0, true)
+	require.NoError(t, err)
+	assert.Greater(t, offset, int64(0))
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.ElementsMatch(t, []string{"192.168.108.167", "192.168.108.236"}, seen)
 }

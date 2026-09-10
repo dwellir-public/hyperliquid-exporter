@@ -7,76 +7,95 @@ import (
 	"time"
 )
 
-func TestLatestFile(t *testing.T) {
-	dir := t.TempDir()
+func touch(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
 
-	// create files with staggered mod times
-	names := []string{"old.txt", "mid.txt", "new.txt"}
-	base := time.Now().Add(-time.Hour)
-	for i, name := range names {
-		p := filepath.Join(dir, name)
-		if err := os.WriteFile(p, []byte("x"), 0644); err != nil {
-			t.Fatal(err)
+func TestLatestFileHourlyLayout(t *testing.T) {
+	dir := t.TempDir()
+	for _, p := range []string{"20260909/23", "20260910/9", "20260910/10", "20260910/2"} {
+		touch(t, filepath.Join(dir, p))
+	}
+	got, err := LatestFile(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(dir, "20260910", "10"); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestLatestFileReplicaLayout(t *testing.T) {
+	dir := t.TempDir()
+	touch(t, filepath.Join(dir, "2026-09-10T15:09:38Z/20260910/1142930000"))
+	touch(t, filepath.Join(dir, "2026-09-10T15:09:38Z/20260910/1142940000"))
+	touch(t, filepath.Join(dir, "2026-09-09T01:00:00Z/20260909/999999999999"))
+	got, err := LatestFile(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(dir, "2026-09-10T15:09:38Z/20260910/1142940000"); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestLatestFileSkipsEmptyNewestDir(t *testing.T) {
+	dir := t.TempDir()
+	touch(t, filepath.Join(dir, "20260909/23"))
+	if err := os.Mkdir(filepath.Join(dir, "20260910"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	touch(t, filepath.Join(dir, ".hidden/99"))
+	got, err := LatestFile(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(dir, "20260909", "23"); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestLatestFileEmptyAndMissing(t *testing.T) {
+	got, err := LatestFile(t.TempDir())
+	if err != nil || got != "" {
+		t.Errorf("empty dir: got (%q, %v)", got, err)
+	}
+	if _, err := LatestFile("/nonexistent/path"); err == nil {
+		t.Error("expected error for nonexistent directory")
+	}
+}
+
+func TestLatestFileCache(t *testing.T) {
+	dir := t.TempDir()
+	touch(t, filepath.Join(dir, "20260910/1"))
+	c := NewLatestFileCache(dir, time.Hour)
+	first, err := c.Get()
+	if err != nil {
+		t.Fatal(err)
+	}
+	touch(t, filepath.Join(dir, "20260910/2"))
+	if again, _ := c.Get(); again != first {
+		t.Errorf("cache re-resolved inside interval: %q -> %q", first, again)
+	}
+	c.next = time.Time{}
+	if fresh, _ := c.Get(); fresh != filepath.Join(dir, "20260910", "2") {
+		t.Errorf("after expiry got %q", fresh)
+	}
+}
+
+func TestSortNamesDescMixed(t *testing.T) {
+	names := []string{"zz", "9", "10", "abc", "2", "999999999.rmp", "1000000000.rmp"}
+	sortNamesDesc(names)
+	want := []string{"1000000000.rmp", "999999999.rmp", "10", "9", "2", "zz", "abc"}
+	for i := range want {
+		if names[i] != want[i] {
+			t.Fatalf("got %v, want %v", names, want)
 		}
-		modTime := base.Add(time.Duration(i) * time.Minute)
-		if err := os.Chtimes(p, modTime, modTime); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	got, err := GetLatestFile(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if filepath.Base(got) != "new.txt" {
-		t.Errorf("got %q, want new.txt", got)
-	}
-}
-
-func TestEmptyDir(t *testing.T) {
-	dir := t.TempDir()
-	got, err := GetLatestFile(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "" {
-		t.Errorf("expected empty string for empty dir, got %q", got)
-	}
-}
-
-func TestNestedDirs(t *testing.T) {
-	dir := t.TempDir()
-	sub := filepath.Join(dir, "sub")
-	if err := os.Mkdir(sub, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	// older file in root
-	old := filepath.Join(dir, "old.txt")
-	if err := os.WriteFile(old, []byte("x"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	past := time.Now().Add(-time.Hour)
-	_ = os.Chtimes(old, past, past)
-
-	// newer file in subdirectory
-	newest := filepath.Join(sub, "newest.txt")
-	if err := os.WriteFile(newest, []byte("x"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	got, err := GetLatestFile(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != newest {
-		t.Errorf("got %q, want %q", got, newest)
-	}
-}
-
-func TestNonexistentDir(t *testing.T) {
-	_, err := GetLatestFile("/nonexistent/path/that/does/not/exist")
-	if err == nil {
-		t.Fatal("expected error for nonexistent directory")
 	}
 }

@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Latest-file resolution no longer walks whole log trees. `utils.LatestFile` descends into the greatest-named entry at each level (`os.ReadDir`), and tailers in EOF loops re-resolve at most every 2 s. Upstream measured about 195% CPU from the previous `filepath.Walk` in 10 ms loops
+- Metrics cleanup no longer forces a garbage collection every 30 s, and Go memory gauges are served from a snapshot refreshed every 30 s instead of calling `runtime.ReadMemStats` on every scrape
+- Gossip, gossip connections, outbound peer and parent peer tailers drain the previous hour file once more before switching to the new one, so lines written just before rollover are not lost
+- Gossip and gossip connections monitors seed from the current hour on restart with counters suppressed, matching the tcp_traffic readers. `hl_p2p_incoming_requests_total`, `hl_p2p_stream_connections_total` and `hl_p2p_verifications_total` no longer replay up to an hour of increments on every restart
+- Child peer state is reconciled per `child_peers status` snapshot instead of accumulating across all snapshots in a poll
 - Public IP lookup reads `$NODE_HOME/last_known_public_ip.json` first and falls back to ipify with a 5 s timeout. Failure logs a warning instead of aborting startup
 - A metrics port that cannot be bound now fails startup with a non-zero exit instead of leaving a metric-less process running
 - Validator latency files are keyed by UTC date, matching hl-node, instead of local time

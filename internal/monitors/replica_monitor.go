@@ -86,13 +86,14 @@ func (m *ReplicaMonitor) streamLoop(ctx context.Context) {
 		}
 	}()
 
+	files := utils.NewLatestFileCache(m.dataDir, latestFileRescan)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 			// check for latest file
-			latestFile, err := utils.GetLatestFile(m.dataDir)
+			latestFile, err := files.Get()
 			if err != nil {
 				logger.ErrorComponent("replica", "Error finding latest replica file: %v", err)
 				time.Sleep(1 * time.Second)

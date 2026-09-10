@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-10
 **Commit:** 447a838 (main), upstream/main at b150dcc (v4.1.1)
-**Status:** all work below is unreleased. Phases are release-sized units; version numbers are assigned at release prep, not here.
+**Status:** phases 1 and 2 landed on branch `upstream-port-sep26` (commits `9bd985e`, `1696ea7`), unreleased. Phase 3 is next; see Handoff. Phases are release-sized units; version numbers are assigned at release prep, not here.
 
 ## TL;DR
 
@@ -185,6 +185,7 @@ Dropped. The flag and `hl_evm_contract_tx_total` were removed in `447a838` toget
 - Upstream: `f38ddb6` (v3.1.0). Replaces `GetLatestFile` with `up:internal/utils/latest_files.go` (185 lines, non-recursive `os.ReadDir` resolvers with lexicographic date and numeric hour sort) and `up:internal/monitors/stream.go` (451 lines, tailer with 2 to 5 s rescan gating). A smaller self-contained resolver is `latestHourlyFile` at `up:internal/monitors/visor_monitor.go:295-328`.
 - Ours: `GetLatestFile` at `ours:internal/utils/utils.go:10` is `filepath.Walk` over the whole tree. Call sites: `block_monitor.go:93,265`, `consensus_monitor.go:537,694`, `validator_status_monitor.go:72,235,315`, `replica_monitor.go:93`, `evm_monitor.go:110`, `validator_ip_monitor.go:106`, `gossip_monitor.go:318,321`, `proposal_monitor.go:50`, `round_advance_monitor.go:49`. Several sit inside 10 ms EOF loops.
 - Change (cheap 80% variant, one file): rewrite `GetLatestFile` as a two-level `ReadDir` resolver (`<date>/<hour>` layout) and add a per-caller rescan gate (2 s in EOF loops, none for slow pollers; see Decisions).
+- Done as `utils.LatestFile`, a depth-agnostic greatest-name descent (replica_cmds has three levels), plus `utils.LatestFileCache` for the seven EOF-loop call sites. `getLatestHourlyFile` deleted.
 
 ```go
 // internal/utils/utils.go
@@ -274,19 +275,19 @@ Keep `internal/peermon` and our metric names. Borrow upstream mechanics for tail
 
 ### 4.1 `round_advance_monitor.go` rewrite
 
-- Ours only. Three defects: fd leak on rotation (`fileReader = nil` without `Close` at `ours:internal/monitors/round_advance_monitor.go:69`), torn-line drop at lines 97-105, and `utils.GetLatestFile` inside the 10 ms loop at line 49.
-- Change: rewrite on `readCommittedLines` plus the Tier 2.1 resolver. Absorbs the 0.3 patch already landed in phase 1.
+- Resolved in phase 1: the file was never launched and read the wrong stream. Round advance events are parsed by the consensus monitor's existing tailer (0.3); the standalone monitor is deleted.
 
 ### 4.2 Startup replay of the current hour
 
 - Ours: `processGossipFile(filePath, 0)` at `ours:internal/monitors/gossip_monitor.go:79` and `processFile(filePath, 0)` at `ours:internal/monitors/gossip_connections_monitor.go:56` replay up to an hour of `_total` increments on every restart. The tcp_traffic readers already guard this with a seeding flag.
 - Change: seek to EOF on first open, one line each.
+- Done differently: replay the current hour with a `seeding` flag that suppresses counters but keeps peer registration and child peer state, matching the tcp_traffic readers. Plain EOF seek would leave child peer gauges empty until the next snapshot.
 
 ### 4.3 Hour rollover drops the old file's tail
 
 - Upstream: two stable EOFs on the old inode before switching, `up:internal/monitors/stream.go:386-408`.
 - Ours: jump to the new file and reset offset at `gossip_monitor.go:102-106`, `gossip_connections_monitor.go:79-83`, `outbound_peers_monitor.go:84-88`, `parent_peer_monitor.go:78-82`. Up to 30 s of the previous hour is lost.
-- Change: shared helper in `log_tail.go` that drains the previous path once more before switching.
+- Change: shared helper in `log_tail.go` that drains the previous path once more before switching. Done as `tailState.poll`.
 
 ```go
 type hourlyTail struct { path string; offset int64 }
@@ -315,7 +316,7 @@ Context: `up:HL_NODE_METRICS_AUDIT.md:323-347,409-421` argues `tcp_traffic` In/O
 
 ### 4.7 Small fixes
 
-- `currentPeers` accumulates across all `child_peers status` lines in one poll at `ours:internal/monitors/gossip_monitor.go:130,168`; reset per line.
+- `currentPeers` accumulates across all `child_peers status` lines in one poll at `ours:internal/monitors/gossip_monitor.go:130,168`; reset per line. Done in phase 2.
 - Per-IP gossip metrics publish regardless of `--peer-latency` (`ours:internal/exporter/exporter.go:105-108`); gate them.
 - `ours:internal/peermon/prober.go:11-15` scans 443, 80, 3001, 3002 then 4000-4010, up to 15 dials per peer per cycle. Prefer the observed `tcp_traffic` port first.
 - Source-health envelope for the four peer monitors: `*_source_up`, `*_sample_age_seconds`, `*_errors_total{stage}`. Today we cannot distinguish "no peers" from "source unreadable".
@@ -430,12 +431,41 @@ Each phase leaves the tree green and is one release. Version numbers are assigne
 
 Phases intentionally cut across tiers. Tiers rank items by severity and category; phases group them by what can land together safely. Three rules drive the grouping: dependency order (the series sweep in 2.3 is only removed after validator reconciliation in 3.4 exists), shared code surface (the resolver in 2.1 and the tailing fixes in 4.1 to 4.3 touch the same files and ship together), and release size small enough to verify on a live node. Safego (1.1) leads phase 1 because it makes every later change non-fatal.
 
-1. **Safety and schema:** 1.1, Tier 0 complete, 1.3, 1.4, 1.6, 3.6. All small; verify against a current mainnet node that `hl_consensus_validator_count`, timeout rounds and signer mapping are non-zero.
-2. **Perf and tailing:** 2.1, 2.2, 4.1, 4.2, 4.3, 4.7 child reset. Measure CPU before and after on a live node.
+1. **Safety and schema (done, `9bd985e`):** 1.1, Tier 0 complete, 1.3, 1.4, 1.6, 3.6. Verified on a mainnet non-validator node: clean startup, no panics. Validator-side checks (validator count, timeout rounds, signer mapping) still need a validator node.
+2. **Perf and tailing (done, `1696ea7`):** 2.1, 2.2, 4.1, 4.2, 4.3, 4.7 child reset. No pre-change CPU baseline was recorded. Post-change on a mainnet non-validator node with EVM, replica and peer latency enabled: about 13% CPU, 34 MB RSS, 28 goroutines.
 3. **Metric correctness:** 3.1, 3.2, 3.5, 1.5, 3.4, then 2.3. Changelog must call out that operation counts drop 2 to 6x.
 4. **Peer quality:** 4.4, 4.5, 4.6, rest of 4.7, 1.8.
 5. **New monitors:** Tier 5 ranks 1 to 5, each behind its own flag per Decisions. Charm gains the new flags.
 6. **Infra and routines:** Tier 6, Tier 7. 3.7, 3.8, 2.4 and Tier 5 ranks 6 to 10 as capacity allows.
+
+## Handoff
+
+Read this before starting phase 3. Everything above the phase list is still the spec; this section is what an implementer needs that the spec does not say.
+
+**Where things are.** Branch `upstream-port-sep26`, two commits on top of `447a838`. `CHANGELOG.md` Unreleased holds entries for both phases plus the earlier contracts removal; keep adding there. `docs/metrics-overview.md` is hand-maintained until 6.5 lands; update it for every metric or label change.
+
+**Conventions established in phases 1 and 2.**
+
+- Every goroutine launch goes through `safego.Go(component, fn)`. Package `metrics` cannot use it (import cycle); its cleanup ticker stays bare.
+- Latest-file lookup is `utils.LatestFile(root)`; tight EOF loops use `utils.NewLatestFileCache(root, latestFileRescan)`. Do not reintroduce `filepath.Walk`.
+- Polling monitors keep their position in a `tailState` and read through `tailState.poll`; startup seeding passes `seeding=true` to suppress counters. New tailers follow the same shape.
+- Action types pass through `actiontypes.Normalize`; categories come from `actiontypes.Category`.
+- Round advance events are handled in `consensus_monitor.processConsensusLine` (`round_advance.go`). There is no standalone round advance monitor.
+- Tests use `initTestMetrics(t)` from `helpers_test.go`; fixtures are inline strings shaped like real log lines. Every schema change gets a case in the old and the new shape.
+- Each phase ends with `make lint`, `make test RACE=1`, a low-effort multi-engine review, fixes, then one commit with a single-line conventional message. Do not mention the plan or phase in the message.
+
+**Phase 3 pointers (metric correctness).** Order: 3.1, 3.2, 3.5, 1.5, 3.4, then 2.3.
+
+- 3.1: `countJSONArrayElements` in `internal/replica/parser.go` is the bug; `TestCountNestedObjects` in `parser_test.go` currently pins the wrong behavior and must change. Changelog must say operation counts drop 2 to 6x.
+- 3.2: `GetValidatorName` in `internal/metrics/getters.go` returns "". `validatorInfoCache` is populated by `validator_api_monitor.go`; check what key it uses before wiring.
+- 3.5: the vote-age gauge needs an observable gauge with a callback; see `internal/metrics/callbacks.go` for the existing pattern.
+- 1.5: consensus maps `qcSignatures`, `tcVotes`, `validatorCache` in `consensus_monitor.go`; `internal/cache` has the LRU.
+- 3.4: only per-validator gauges are unbounded now (Decisions). Add `RemoveValidatorSeries` next to the existing `Remove*` helpers in `setters.go` and call it from `validator_api_monitor.go` and `validator_latency_monitor.go` on set difference.
+- 2.3: delete the sweep in `internal/metrics/types.go` and `cleanup_test.go` only after 3.4 is in.
+
+**Phase 4 note.** 4.1 is done. 4.7's child reset is done. The rest of Tier 4 is untouched.
+
+**Open verification debt.** Validator-node checks from phase 1 acceptance, and a CPU before/after with the pre-phase-2 build if a baseline is still wanted.
 
 ## Testing Decisions
 

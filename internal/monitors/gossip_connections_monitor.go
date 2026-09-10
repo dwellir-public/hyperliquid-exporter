@@ -15,13 +15,13 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/peermon"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/utils"
 )
 
 type GossipConnectionsMonitor struct {
 	config       *config.Config
 	dir          string
-	lastFile     string
-	lastOffset   int64
+	tail         tailState
 	registerPeer func(string, peermon.PeerDirection)
 }
 
@@ -49,14 +49,15 @@ func (m *GossipConnectionsMonitor) monitor(ctx context.Context, errCh chan<- err
 	ticker := time.NewTicker(gossipPollInterval)
 	defer ticker.Stop()
 
-	// process immediately on startup
-	if filePath, err := getLatestHourlyLogFile(m.dir); err == nil && filePath != "" {
+	// seed from the current hour on startup for peer discovery; counters are
+	// suppressed because Prometheus already recorded those samples
+	if filePath, err := utils.LatestFile(m.dir); err == nil && filePath != "" {
 		logger.InfoComponent("gossip", "First run: processing gossip connections file %s", filePath)
-		m.lastFile = filePath
-		if newOffset, err := m.processFile(filePath, 0); err != nil {
+		m.tail.path = filePath
+		if newOffset, err := m.processFile(filePath, 0, true); err != nil {
 			logger.ErrorComponent("gossip", "Initial gossip connections processing error: %v", err)
 		} else {
-			m.lastOffset = newOffset
+			m.tail.offset = newOffset
 		}
 	}
 
@@ -66,7 +67,7 @@ func (m *GossipConnectionsMonitor) monitor(ctx context.Context, errCh chan<- err
 			logger.InfoComponent("gossip", "Gossip connections monitor shutting down")
 			return
 		case <-ticker.C:
-			filePath, err := getLatestHourlyLogFile(m.dir)
+			filePath, err := utils.LatestFile(m.dir)
 			if err != nil {
 				logger.ErrorComponent("gossip", "Error getting latest gossip connections file: %v", err)
 				continue
@@ -76,13 +77,13 @@ func (m *GossipConnectionsMonitor) monitor(ctx context.Context, errCh chan<- err
 				continue
 			}
 
-			if filePath != m.lastFile {
+			if filePath != m.tail.path {
 				logger.InfoComponent("gossip", "Switching to new gossip connections file: %s", filePath)
-				m.lastFile = filePath
-				m.lastOffset = 0
 			}
 
-			newOffset, err := m.processFile(filePath, m.lastOffset)
+			err = m.tail.poll(filePath, func(path string, offset int64) (int64, error) {
+				return m.processFile(path, offset, false)
+			})
 			if err != nil {
 				logger.ErrorComponent("gossip", "Error processing gossip connections file: %v", err)
 				select {
@@ -90,14 +91,14 @@ func (m *GossipConnectionsMonitor) monitor(ctx context.Context, errCh chan<- err
 				case <-ctx.Done():
 					return
 				}
-			} else {
-				m.lastOffset = newOffset
 			}
 		}
 	}
 }
 
-func (m *GossipConnectionsMonitor) processFile(filePath string, offset int64) (int64, error) {
+// processFile tails filePath from offset. With seeding set, counters are not
+// incremented but peers are still registered (startup replay).
+func (m *GossipConnectionsMonitor) processFile(filePath string, offset int64, seeding bool) (int64, error) {
 	if filePath == "" {
 		return offset, fmt.Errorf("empty file path")
 	}
@@ -142,7 +143,9 @@ func (m *GossipConnectionsMonitor) processFile(filePath string, offset int64) (i
 			if err != nil {
 				peerIP = ipPort
 			}
-			metrics.IncrementStreamConnections(peerIP, connType)
+			if !seeding {
+				metrics.IncrementStreamConnections(peerIP, connType)
+			}
 			if m.registerPeer != nil {
 				m.registerPeer(peerIP, connTypeToDirection(connType))
 			}
@@ -154,7 +157,9 @@ func (m *GossipConnectionsMonitor) processFile(filePath string, offset int64) (i
 			if err := json.Unmarshal(eventData[1], &peer); err != nil {
 				return
 			}
-			metrics.IncrementVerifications(peer.IP)
+			if !seeding {
+				metrics.IncrementVerifications(peer.IP)
+			}
 			if m.registerPeer != nil {
 				m.registerPeer(peer.IP, peermon.Unknown)
 			}

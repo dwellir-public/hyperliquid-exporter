@@ -13,6 +13,7 @@ commit: 37891c7
 | `hl_core_block_height` | Gauge | - | Current block height | - |
 | `hl_core_blocks_processed` | Counter | - | Total blocks processed | `--replica-metrics` |
 | `hl_core_block_time_milliseconds` | Histogram | `state_type` | Time between blocks in milliseconds | - |
+| `hl_core_block_propagation_latency_milliseconds` | Histogram | `state_type`, `peer_ip` | Block propagation latency (`begin_block_wall_time` minus `block_time`) labeled by the parent peer delivering the block; `peer_ip="unknown"` without `--peer-latency` | - |
 | `hl_core_latest_block_time` | Gauge | - | Unix timestamp of latest block | - |
 | `hl_core_last_processed_round` | Gauge | - | Last processed consensus round | `--replica-metrics` |
 | `hl_core_last_processed_time` | Gauge | - | Unix timestamp of last processed block | `--replica-metrics` |

@@ -182,6 +182,20 @@ func RecordBlockTimeWithLabel(duration float64, stateType string) {
 	}
 }
 
+// RecordPropagationLatency records begin_block_wall_time minus block_time for
+// one block, labeled by state and the parent peer (peer_ip, matching the
+// hl_node_parent_peer_* family) that delivered it.
+func RecordPropagationLatency(latencyMs float64, stateType, parentIP string) {
+	if HLCorePropagationLatencyHistogram == nil {
+		return
+	}
+	labels := append(getCommonLabels(),
+		attribute.String("state_type", stateType),
+		attribute.String("peer_ip", parentIP),
+	)
+	HLCorePropagationLatencyHistogram.Record(context.Background(), latencyMs, api.WithAttributes(labels...))
+}
+
 func RecordApplyDuration(duration float64) {
 	metricsMutex.Lock()
 	defer metricsMutex.Unlock()

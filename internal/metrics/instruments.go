@@ -73,6 +73,7 @@ var (
 	HLCoreTxPerBlockHistogram         api.Float64Histogram
 	HLCoreOperationsPerBlockHistogram api.Float64Histogram
 	HLMetalApplyDurationHistogram     api.Float64Histogram
+	HLCorePropagationLatencyHistogram api.Float64Histogram
 
 	// histograms, EVM
 	HLEVMBlockTimeHistogram  api.Float64Histogram
@@ -185,6 +186,21 @@ func createInstruments() error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create metal apply duration histogram: %w", err)
+	}
+
+	// one series set per parent ever seen, so keep the bucket count modest
+	propagationLatencyBuckets := []float64{
+		25, 50, 75, 100, 125, 150, 175, 200, 225, 250,
+		300, 350, 400, 500, 600, 800, 1000, 1500, 2000, 5000,
+	}
+	HLCorePropagationLatencyHistogram, err = meter.Float64Histogram(
+		"hl_core_block_propagation_latency_milliseconds",
+		api.WithDescription("Distribution of block propagation latency (begin_block_wall_time minus block_time) in milliseconds, labeled by the parent peer that delivered the block"),
+		api.WithUnit("ms"),
+		api.WithExplicitBucketBoundaries(propagationLatencyBuckets...),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create core propagation latency histogram: %w", err)
 	}
 
 	HLConsensusProposerCounter, err = meter.Int64Counter(

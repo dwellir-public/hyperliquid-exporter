@@ -160,6 +160,29 @@ func monitorBlockState(ctx context.Context, cfg config.Config, errCh chan<- erro
 	}
 }
 
+// blockTimeLayout is the timestamp format the node writes to block time files (UTC, no zone).
+const blockTimeLayout = "2006-01-02T15:04:05.999999999"
+
+// recordPropagation records begin_block_wall_time minus block_time as
+// propagation latency attributed to the current parent peer. Skipped when the
+// field is absent (older node versions) or the delta is negative (clock skew).
+func recordPropagation(beginWall string, blockTime time.Time, stateType string) {
+	if beginWall == "" {
+		return
+	}
+	began, err := time.Parse(blockTimeLayout, beginWall)
+	if err != nil {
+		logger.DebugComponent("core", "Skipping %s propagation sample, bad begin_block_wall_time %q: %v", stateType, beginWall, err)
+		return
+	}
+	latencyMs := float64(began.UTC().Sub(blockTime).Microseconds()) / 1000
+	if latencyMs < 0 {
+		logger.DebugComponent("core", "Skipping %s propagation sample, negative latency %.3f ms", stateType, latencyMs)
+		return
+	}
+	recordPropagationLatency(latencyMs, stateType, quality.Parent())
+}
+
 func parseBlockTimeLine(ctx context.Context, line string, stateType string) error {
 	var data map[string]any
 	if err := json.Unmarshal([]byte(line), &data); err != nil {
@@ -181,21 +204,22 @@ func parseBlockTimeLine(ctx context.Context, line string, stateType string) erro
 		return fmt.Errorf("apply duration not found or not a number")
 	}
 
-	// new field: begin_block_wall_time (when the block processing started)
+	// optional: wall clock when the node began applying the block
 	beginBlockWallTime, _ := data["begin_block_wall_time"].(string)
 
 	// convert applyDuration from seconds to milliseconds
 	applyDurationMs := applyDuration * 1000
 
 	// parse block_time to Unix timestamp
-	layout := "2006-01-02T15:04:05.999999999"
-	parsedTime, err := time.Parse(layout, blockTime)
+	parsedTime, err := time.Parse(blockTimeLayout, blockTime)
 	if err != nil {
 		return fmt.Errorf("error parsing block time: %w", err)
 	}
 
 	// assume the time is in UTC if no timezone is specified
 	parsedTime = parsedTime.UTC()
+
+	recordPropagation(beginBlockWallTime, parsedTime, stateType)
 
 	// calculate block time difference for this state type
 	lastBlockTimeMu.Lock()
@@ -361,8 +385,7 @@ func parseLegacyBlockTimeLine(ctx context.Context, line string) error {
 	applyDurationMs := applyDuration * 1000
 
 	// parse block_time to Unix timestamp
-	layout := "2006-01-02T15:04:05.999999999"
-	parsedTime, err := time.Parse(layout, blockTime)
+	parsedTime, err := time.Parse(blockTimeLayout, blockTime)
 	if err != nil {
 		return fmt.Errorf("error parsing block time: %w", err)
 	}

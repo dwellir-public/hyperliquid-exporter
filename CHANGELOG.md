@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-09-10
+
 ### Added
 
 - `hl_core_block_propagation_latency_milliseconds{state_type,peer_ip}`: histogram of `begin_block_wall_time` minus `block_time` per block from the fast/slow block time files, i.e. how long a block took to reach this node. `peer_ip` is the parent peer delivering blocks at the time (`unknown` without `--peer-latency`), so percentiles can be compared per upstream
@@ -16,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Upgraded dependencies:
   - Go 1.26.7
   - golangci-lint 2.13.2
+  - General library update
 
 ## [2.3.0] - 2026-07-10
 
@@ -208,7 +211,8 @@ Initial release post-fork.
 - `--disable-prom` flag (Prometheus now always enabled)
 - `hl_evm_transactions_total` metric (replaced by `hl_evm_tx_type_total`)
 
-[Unreleased]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.1.4...v2.2.0
 [2.1.4]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.1.3...v2.1.4

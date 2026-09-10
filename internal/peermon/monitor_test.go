@@ -221,6 +221,7 @@ func TestMonitor_StartSyncsLoadedPeerCount(t *testing.T) {
 	}
 
 	m := New(dir)
+	m.Load()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
@@ -302,4 +303,15 @@ func TestMonitor_ExpireStaleRemovesMetrics(t *testing.T) {
 	assert.Equal(t, []string{"10.0.0.1"}, removed)
 	assert.Equal(t, int64(1), count)
 	assert.Equal(t, 1, m.peers.Len())
+}
+
+func TestMonitor_SetParentPeerEmptyClears(t *testing.T) {
+	initTestMetrics(t)
+	m := New(t.TempDir())
+	m.SetParentPeer("10.0.0.1")
+	require.Equal(t, 1, m.peers.Len())
+
+	m.SetParentPeer("")
+	assert.Equal(t, "", m.parentIP.Load().(string))
+	assert.Equal(t, 1, m.peers.Len(), "clearing must not register an empty IP")
 }

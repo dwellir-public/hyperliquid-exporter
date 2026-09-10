@@ -85,14 +85,18 @@ Metrics marked with `--replica-metrics` also require hl-node to be running with 
 | `hl_p2p_incoming_peers_active` | Gauge | - | Number of incoming peers seen in last 5 minutes | gossip_rpc logs |
 | `hl_p2p_child_peer_connected` | Gauge | `peer_ip`, `verified` | Whether a child peer is connected (1) or absent (0) | gossip_rpc logs |
 | `hl_p2p_child_peer_connections` | Gauge | `peer_ip` | Number of connections per child peer | gossip_rpc logs |
-| `hl_p2p_stream_connections_total` | Counter | `peer_ip`, `type` | Total stream connections per peer IP and type | gossip_connections logs |
-| `hl_p2p_verifications_total` | Counter | `peer_ip` | Total gossip RPC verifications per peer IP | gossip_connections logs |
+| `hl_p2p_stream_connections_total` | Counter | `peer_ip`, `type` | Total stream connections per peer IP and type | gossip_connections logs, `--peer-latency` |
+| `hl_p2p_verifications_total` | Counter | `peer_ip` | Total gossip RPC verifications per peer IP | gossip_connections logs, `--peer-latency` |
+| `hl_p2p_gossip_events_total` | Counter | `event_type` | Gossip connection events by tag, counted after exporter start. `event_type` is one of 15 allowlisted snake_case tags or `other` | gossip_connections logs |
+| `hl_p2p_gossip_unknown_events_total` | Counter | - | Gossip connection events whose tag is not in the allowlist. A rising value means hl-node added an event type | gossip_connections logs |
 
 The `incoming_*` metrics are particularly useful for downstream (non-validator) nodes where `child_peers status` is always empty — the upstream peer only appears in `incoming request` events. The `stream_connections` and `verifications` metrics come from a separate log directory (`gossip_connections/`) and track the TCP connection lifecycle.
 
+Every `peer_ip`-labeled series in this section is published only with `--peer-latency`, where the peer set is bounded and curated. Without the flag only the aggregate gauges and the `event_type` counters are emitted. Peer discovery for the latency monitor still runs off the same events.
+
 ## Peer Latency Metrics
 
-Requires `--peer-latency` flag. Probes all known peers via TCP connect (ports 4000-4010) once per minute. Peers are discovered from multiple sources and persisted to disk across restarts:
+Requires `--peer-latency` flag. Probes all known peers via TCP connect once per minute, trying the port last seen for that peer (from a successful probe or from `tcp_traffic`) before falling back to 3001, 3002, 443, 80 and 4000-4010. Peers discovered from `tcp_traffic` are admitted only after carrying positive traffic in two consecutive 30 s samples while in the top 16 endpoints of their direction, so transient connections do not churn the set. Peers are discovered from multiple sources and persisted to disk across restarts:
 
 - **gossip_rpc logs**: child peer status and incoming request events (inbound connections)
 - **gossip_connections logs**: stream connection and verification events (inbound connections)
@@ -116,7 +120,7 @@ The `direction` label is one of `inbound`, `outbound`, or `unknown`. A peer seen
 
 ## Parent Peer Metrics
 
-Requires `--peer-latency` flag. Identifies the node's primary upstream peer (the one delivering all block data) by analyzing `tcp_traffic` byte volumes. The peer with the highest inbound traffic value is the parent — in practice, the signal is ~7 orders of magnitude above noise.
+Requires `--peer-latency` flag. Infers the node's primary upstream peer from `tcp_traffic` byte volumes. `In` in that log is a byte direction, not a connection role, so "parent" is an inference: the endpoint that dominates smoothed inbound traffic. In practice the signal is ~7 orders of magnitude above noise. Selection: per-IP inbound volume is aggregated across ports and smoothed with an EWMA (alpha 0.3); a challenger must exceed the incumbent's smoothed value by 1.2x to take over; ties break on the lowest IP; the parent is cleared after 90 s without any inbound traffic. `hl_node_parent_peer_share_ratio` and `hl_node_parent_peer_challenger_ratio` expose the evidence behind the current choice.
 
 | Metric | Type | Labels | Description | Requirements |
 |--------|------|--------|-------------|--------------|
@@ -125,6 +129,8 @@ Requires `--peer-latency` flag. Identifies the node's primary upstream peer (the
 | `hl_node_parent_peer_tenure_seconds` | Gauge | - | How long the current parent peer has held the role | `--peer-latency` |
 | `hl_node_parent_peer_switches_total` | Counter | - | Total number of parent peer changes | `--peer-latency` |
 | `hl_node_parent_peer_latency_ms` | Gauge | `peer_ip` | TCP connect latency to the parent peer in milliseconds | `--peer-latency` |
+| `hl_node_parent_peer_share_ratio` | Gauge | - | Parent's smoothed inbound volume as a fraction of all smoothed inbound volume (1 = sole source) | `--peer-latency` |
+| `hl_node_parent_peer_challenger_ratio` | Gauge | - | Strongest non-parent peer's smoothed inbound volume divided by the parent's; above 1.2 triggers a switch | `--peer-latency` |
 | `hl_node_parent_peer_tenure_seconds_total` | Counter | `peer_ip` | Cumulative seconds each peer has served as parent | `--peer-latency` |
 | `hl_node_parent_peer_degraded_seconds_total` | Counter | `peer_ip` | Cumulative seconds of degraded block rate attributed to the parent at the time (see definition below) | `--peer-latency` |
 | `hl_node_parent_peer_blocks_total` | Counter | `peer_ip` | Blocks applied while each peer was parent | `--peer-latency` |
@@ -201,6 +207,11 @@ The above are available to all node types, while the below metrics require acces
 | Metric | Type | Labels | Description | Requirements |
 |--------|------|--------|-------------|--------------|
 | `hl_exporter_monitor_panics_total` | Counter | `monitor` | Panics recovered in exporter monitor goroutines. Any non-zero value means a monitor stopped reporting until restart | - |
+| `hl_exporter_source_up` | Gauge | `stream` | 1 when the last poll of a consumed log stream resolved and read a file without error. Distinguishes "no peers" from "source unreadable" | - |
+| `hl_exporter_source_sample_age_seconds` | Gauge | `stream` | Seconds since the last well-formed record was read from the stream | - |
+| `hl_exporter_parse_errors_total` | Counter | `stream`, `stage` | Records rejected by a stream parser. `stage` is `json`, `shape`, `timestamp`, `payload`, `record` or `row`. A rising value on a healthy node means hl-node changed a log shape | - |
+
+`stream` is one of `gossip_rpc`, `gossip_connections`, `tcp_traffic`. Other streams will be added as their parsers gain the same envelope.
 
 ## Label Definitions
 

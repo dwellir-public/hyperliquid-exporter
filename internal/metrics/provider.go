@@ -71,6 +71,12 @@ func getAllObservables() []api.Observable {
 		HLNodeParentPeerTenureGauge,
 		HLNodeParentPeerLatencyGauge,
 		HLNodeParentPeerBlockLagGauge,
+		HLNodeParentPeerShareRatioGauge,
+		HLNodeParentPeerChallengerRatioGauge,
+
+		// exporter source health
+		HLExporterSourceUpGauge,
+		HLExporterSourceSampleAgeGauge,
 
 		// hl-node client metrics
 		HLSoftwareVersionInfo,

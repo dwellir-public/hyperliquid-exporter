@@ -1345,6 +1345,47 @@ func IncrementVerifications(peerIP string) {
 		api.WithAttributes(attribute.String("peer_ip", peerIP)))
 }
 
+func IncrementGossipEvent(eventType string) {
+	HLP2PGossipEventsTotalCounter.Add(sharedCtx, 1,
+		api.WithAttributes(attribute.String("event_type", eventType)))
+}
+
+func IncrementGossipUnknownEvent() {
+	HLP2PGossipUnknownEventsTotalCounter.Add(sharedCtx, 1)
+}
+
+// Source health envelope, one series per consumed log stream
+
+func IncrementParseErrors(stream, stage string) {
+	HLExporterParseErrorsCounter.Add(sharedCtx, 1,
+		api.WithAttributes(attribute.String("stream", stream), attribute.String("stage", stage)))
+}
+
+func SetSourceUp(stream string, up bool) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	if _, exists := labeledValues[HLExporterSourceUpGauge]; !exists {
+		labeledValues[HLExporterSourceUpGauge] = make(map[string]labeledValue)
+	}
+	v := 0.0
+	if up {
+		v = 1
+	}
+	labeledValues[HLExporterSourceUpGauge][stream] = labeledValue{
+		updatedAt: time.Now(),
+		value:     v,
+		labels:    []attribute.KeyValue{attribute.String("stream", stream)},
+	}
+}
+
+// records that a well-formed record was read from stream at the given time;
+// hl_exporter_source_sample_age_seconds is derived from it at scrape
+func MarkSourceSample(stream string, at time.Time) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	sourceSamples[stream] = at
+}
+
 // Peer latency setters
 
 func SetPeerLatency(peerIP, direction string, latencyMs float64) {
@@ -1553,6 +1594,13 @@ func IncrementParentPeerBlocks(ip string) {
 func AddParentPeerTrafficVolume(ip string, v float64) {
 	HLNodeParentPeerTrafficTotalCounter.Add(sharedCtx, v,
 		api.WithAttributes(attribute.String("peer_ip", ip)))
+}
+
+func SetParentPeerRatios(share, challenger float64) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	currentValues[HLNodeParentPeerShareRatioGauge] = share
+	currentValues[HLNodeParentPeerChallengerRatioGauge] = challenger
 }
 
 // IncMonitorPanic counts a recovered panic attributed to a monitor goroutine.

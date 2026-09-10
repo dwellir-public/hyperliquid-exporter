@@ -6,6 +6,7 @@ import (
 	"slices"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
 	api "go.opentelemetry.io/otel/metric"
 )
 
@@ -47,6 +48,11 @@ func RegisterCallbacks() error {
 			for _, v := range lastVotes {
 				allLabels := slices.Concat(v.labels, commonLabels)
 				o.ObserveFloat64(HLConsensusVoteTimeDiffGauge, now.Sub(v.updatedAt).Seconds(), api.WithAttributes(allLabels...))
+			}
+
+			for stream, at := range sourceSamples {
+				o.ObserveFloat64(HLExporterSourceSampleAgeGauge, now.Sub(at).Seconds(),
+					api.WithAttributes(append([]attribute.KeyValue{attribute.String("stream", stream)}, commonLabels...)...))
 			}
 
 			// collect memory stats

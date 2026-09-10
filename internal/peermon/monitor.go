@@ -46,10 +46,13 @@ func New(dataDir string) *Monitor {
 	return m
 }
 
-// SetParentPeer records the current parent peer IP for dedicated latency tracking.
-// Safe to call from any goroutine.
+// SetParentPeer records the current parent peer IP for dedicated latency
+// tracking. An empty IP clears it. Safe to call from any goroutine.
 func (m *Monitor) SetParentPeer(ip string) {
 	m.parentIP.Store(ip)
+	if ip == "" {
+		return
+	}
 	evictedIP, evicted := m.peers.MarkParent(ip)
 	if evicted {
 		removePeerMetrics(evictedIP)
@@ -67,13 +70,24 @@ func (m *Monitor) Register(ip string, dir PeerDirection) {
 	setPeerCount(int64(m.peers.Len()))
 }
 
-// Start runs the monitor loop until ctx is cancelled.
-func (m *Monitor) Start(ctx context.Context, errCh chan<- error) {
+// SuggestPort records a log-observed port for a peer without a proven one.
+func (m *Monitor) SuggestPort(ip string, port int) {
+	m.peers.SuggestPort(ip, port)
+}
+
+// Load restores the persisted peer set. Call it before any producer can
+// Register so a stale disk entry never overrides a fresh registration.
+func (m *Monitor) Load() {
 	if err := m.peers.Load(); err != nil {
 		logger.WarningComponent("peer-latency", "Failed to load peers from disk: %v", err)
 	} else if n := m.peers.Len(); n > 0 {
 		logger.InfoComponent("peer-latency", "Loaded %d peers from disk", n)
 	}
+	setPeerCount(int64(m.peers.Len()))
+}
+
+// Start runs the probe loop until ctx is cancelled.
+func (m *Monitor) Start(ctx context.Context, errCh chan<- error) {
 	setPeerCount(int64(m.peers.Len()))
 
 	ticker := time.NewTicker(probeInterval)

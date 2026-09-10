@@ -30,7 +30,9 @@ var (
 	currentValues = make(map[api.Observable]any)
 	labeledValues = make(map[api.Observable]map[string]labeledValue)
 	// latest vote log time per validator address; value is unused
-	lastVotes     = make(map[string]labeledValue)
+	lastVotes = make(map[string]labeledValue)
+	// receipt time of the last well-formed record per log stream
+	sourceSamples = make(map[string]time.Time)
 	callbacks     []api.Registration
 	cleanupTicker *time.Ticker
 )

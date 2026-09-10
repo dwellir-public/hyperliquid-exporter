@@ -95,6 +95,7 @@ func Start(ctx context.Context, cfg config.Config) {
 		logger.InfoComponent("peer-latency", "Initializing peer latency monitor...")
 		peerDataDir := filepath.Join(filepath.Dir(cfg.NodeHome), persistentFilesDir)
 		peerMon = peermon.New(peerDataDir)
+		peerMon.Load() // synchronously, before any producer registers
 		registerPeer = peerMon.Register
 		safego.Go("peer-latency", func() { peerMon.Start(monitorCtx, peerLatencyErrCh) })
 	} else {
@@ -108,9 +109,10 @@ func Start(ctx context.Context, cfg config.Config) {
 	logger.InfoComponent("gossip", "Initializing gossip connections monitor...")
 	safego.Go("gossip", func() { monitors.StartGossipConnectionsMonitor(monitorCtx, &cfg, gossipConnErrCh, registerPeer) })
 
-	if registerPeer != nil {
-		safego.Go("gossip", func() { monitors.StartOutboundPeersMonitor(monitorCtx, &cfg, registerPeer) })
-		safego.Go("gossip", func() { monitors.StartParentPeerMonitor(monitorCtx, &cfg, peerMon.SetParentPeer) })
+	if peerMon != nil {
+		outbound := monitors.NewOutboundPeersMonitor(peerMon.Register, peerMon.SuggestPort)
+		parent := monitors.NewParentPeerMonitor(peerMon.SetParentPeer)
+		safego.Go("gossip", func() { monitors.StartTCPTrafficMonitor(monitorCtx, &cfg, outbound, parent) })
 	}
 
 	if cfg.EnableReplicaMetrics {

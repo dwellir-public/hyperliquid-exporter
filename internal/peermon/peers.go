@@ -43,6 +43,12 @@ type Peer struct {
 	LastProbe   time.Time              `json:"last_probe,omitzero"`
 }
 
+// validPeerIP is the single admission predicate for every path that adds a
+// peer (Register, MarkParent, Load): a bare IPv4 or IPv6 address.
+func validPeerIP(ip string) bool {
+	return net.ParseIP(ip) != nil
+}
+
 // PeerSet is a thread-safe, bounded set of peers with JSON persistence.
 type PeerSet struct {
 	mu    sync.RWMutex
@@ -64,7 +70,7 @@ func NewPeerSet(dir string) *PeerSet {
 // the peer with the oldest LastSeen is evicted and returned.
 // Returns ("", false) silently for invalid IPs (not a bare IPv4/IPv6 address).
 func (ps *PeerSet) Register(ip string, dir PeerDirection) (string, bool) {
-	if net.ParseIP(ip) == nil {
+	if !validPeerIP(ip) {
 		return "", false
 	}
 
@@ -100,7 +106,7 @@ func (ps *PeerSet) Register(ip string, dir PeerDirection) (string, bool) {
 // LRU eviction. Registers the IP first if unknown. Like Register, it
 // returns the evicted peer's IP when adding the parent displaced one.
 func (ps *PeerSet) MarkParent(ip string) (string, bool) {
-	if net.ParseIP(ip) == nil {
+	if !validPeerIP(ip) {
 		return "", false
 	}
 
@@ -220,7 +226,9 @@ func (ps *PeerSet) Dirty() bool {
 	return ps.dirty
 }
 
-// Load reads peers from disk. Returns nil on missing file.
+// Load merges peers from disk into the set. Returns nil on missing file.
+// Entries with an invalid IP or unseen for longer than peerTTL are skipped,
+// and an entry never overrides a peer that was registered more recently.
 func (ps *PeerSet) Load() error {
 	data, err := os.ReadFile(ps.path)
 	if os.IsNotExist(err) {
@@ -235,23 +243,51 @@ func (ps *PeerSet) Load() error {
 		return fmt.Errorf("parse peers file: %w", err)
 	}
 
+	cutoff := time.Now().Add(-peerTTL)
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 
 	for i := range peers {
 		p := peers[i]
-		if p.IP == "" {
+		if !validPeerIP(p.IP) || p.LastSeen.Before(cutoff) {
+			continue
+		}
+		if p.Directions == nil {
+			p.Directions = map[PeerDirection]bool{}
+		}
+		if live, exists := ps.peers[p.IP]; exists {
+			maps.Copy(live.Directions, p.Directions)
+			live.WasParent = live.WasParent || p.WasParent
+			if live.Port == 0 {
+				live.Port = p.Port
+			}
 			continue
 		}
 		if len(ps.peers) >= maxPeers {
 			break
 		}
-		if p.Directions == nil {
-			p.Directions = map[PeerDirection]bool{}
-		}
 		ps.peers[p.IP] = &p
 	}
 	return nil
+}
+
+// SuggestPort records a port observed in node logs for a peer that has no
+// proven port yet, so the prober tries it first.
+func (ps *PeerSet) SuggestPort(ip string, port int) {
+	if port <= 0 {
+		return
+	}
+
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	p, exists := ps.peers[ip]
+	if !exists || p.Port != 0 {
+		return
+	}
+	p.Port = port
+	ps.gen++
+	ps.dirty = true
 }
 
 // Save writes peers to disk atomically. No-op if not dirty.

@@ -29,7 +29,12 @@ type GossipMonitor struct {
 	peerLastSeen    map[string]time.Time // tier 1: track active incoming peers
 	knownChildPeers map[string]childPeerState
 	registerPeer    func(string, peermon.PeerDirection)
+	// perIP gates the per-peer_ip series; they only make sense with
+	// --peer-latency, where the peer set is bounded and curated
+	perIP bool
 }
+
+const gossipRPCStream = "gossip_rpc"
 
 type PeerInfo struct {
 	IP string `json:"Ip"`
@@ -52,6 +57,7 @@ func NewGossipMonitor(cfg *config.Config, registerPeer func(string, peermon.Peer
 		peerLastSeen:    make(map[string]time.Time),
 		knownChildPeers: make(map[string]childPeerState),
 		registerPeer:    registerPeer,
+		perIP:           cfg.EnablePeerLatency,
 	}
 }
 
@@ -60,6 +66,7 @@ func StartGossipMonitor(ctx context.Context, cfg *config.Config, errCh chan<- er
 
 	if _, err := os.Stat(m.gossipDir); os.IsNotExist(err) {
 		logger.InfoComponent("gossip", "Gossip RPC directory not found, monitoring disabled: %s", m.gossipDir)
+		metrics.SetSourceUp(gossipRPCStream, false)
 		return
 	}
 
@@ -93,10 +100,12 @@ func (m *GossipMonitor) monitorGossipLogs(ctx context.Context, errCh chan<- erro
 			filePath, err := utils.LatestFile(m.gossipDir)
 			if err != nil {
 				logger.ErrorComponent("gossip", "Error getting latest gossip file: %v", err)
+				metrics.SetSourceUp(gossipRPCStream, false)
 				continue
 			}
 
 			if filePath == "" {
+				metrics.SetSourceUp(gossipRPCStream, false)
 				continue
 			}
 
@@ -107,6 +116,7 @@ func (m *GossipMonitor) monitorGossipLogs(ctx context.Context, errCh chan<- erro
 			err = m.tail.poll(filePath, func(path string, offset int64) (int64, error) {
 				return m.processGossipFile(path, offset, false)
 			})
+			metrics.SetSourceUp(gossipRPCStream, err == nil)
 			if err != nil {
 				logger.ErrorComponent("gossip", "Error processing gossip file: %v", err)
 				select {
@@ -129,40 +139,50 @@ func (m *GossipMonitor) processGossipFile(filePath string, offset int64, seeding
 	var verifiedCount, unverifiedCount int64
 	var lastUpdateTime time.Time
 	currentPeers := make(map[string]PeerStatus)
+	sampled := false
+	// replayed history was already counted before the restart
+	parseError := func(stage string) {
+		if !seeding {
+			metrics.IncrementParseErrors(gossipRPCStream, stage)
+		}
+	}
 
 	newOffset, err := readCommittedLines(filePath, offset, func(line []byte) {
 		var entry []json.RawMessage
 		if err := json.Unmarshal(line, &entry); err != nil {
+			parseError("json")
 			return
 		}
 
 		if len(entry) != 2 {
+			parseError("shape")
 			return
 		}
 
 		var timestamp string
-		if err := json.Unmarshal(entry[0], &timestamp); err != nil {
+		if err := unmarshalRequiredJSON(entry[0], &timestamp); err != nil {
+			parseError("timestamp")
 			return
 		}
 
-		entryTime, err := time.Parse("2006-01-02T15:04:05.999999999", timestamp)
-		if err != nil {
+		entryTime, ok := parseVisorTime(timestamp)
+		if !ok {
+			parseError("timestamp")
 			return
 		}
 
 		var eventData []json.RawMessage
-		if err := json.Unmarshal(entry[1], &eventData); err != nil {
-			return
-		}
-
-		if len(eventData) < 2 {
+		if err := json.Unmarshal(entry[1], &eventData); err != nil || len(eventData) < 2 {
+			parseError("shape")
 			return
 		}
 
 		var eventType string
-		if err := json.Unmarshal(eventData[0], &eventType); err != nil {
+		if err := unmarshalRequiredJSON(eventData[0], &eventType); err != nil {
+			parseError("shape")
 			return
 		}
+		sampled = true
 
 		switch eventType {
 		case "child_peers status":
@@ -171,6 +191,7 @@ func (m *GossipMonitor) processGossipFile(filePath string, offset int64, seeding
 			var peerList [][]json.RawMessage
 			if err := json.Unmarshal(eventData[1], &peerList); err != nil {
 				// malformed snapshot: keep the previous state untouched
+				parseError("payload")
 				return
 			}
 			clear(currentPeers)
@@ -184,6 +205,9 @@ func (m *GossipMonitor) processGossipFile(filePath string, offset int64, seeding
 	})
 	if err != nil {
 		return offset, fmt.Errorf("failed to tail gossip file: %w", err)
+	}
+	if sampled {
+		metrics.MarkSourceSample(gossipRPCStream, time.Now())
 	}
 
 	// update aggregate child peer metrics
@@ -226,13 +250,15 @@ func (m *GossipMonitor) processChildPeers(peerList [][]json.RawMessage, currentP
 			unverified++
 		}
 
-		if prev, exists := m.knownChildPeers[info.IP]; exists && prev.verified != status.Verified {
+		if prev, exists := m.knownChildPeers[info.IP]; exists && prev.verified != status.Verified && m.perIP {
 			metrics.RemoveChildPeerConnected(info.IP, prev.verified)
 		}
 
 		// tier 2: per-peer detail
-		metrics.SetChildPeerConnected(info.IP, status.Verified, true)
-		metrics.SetChildPeerConnections(info.IP, status.ConnectionCount)
+		if m.perIP {
+			metrics.SetChildPeerConnected(info.IP, status.Verified, true)
+			metrics.SetChildPeerConnections(info.IP, status.ConnectionCount)
+		}
 		if m.registerPeer != nil {
 			m.registerPeer(info.IP, peermon.Outbound)
 		}
@@ -258,10 +284,12 @@ func (m *GossipMonitor) processIncomingRequest(eventData []json.RawMessage, entr
 		peerIP = ipPort // fallback: use as-is if no port
 	}
 
-	if !seeding {
-		metrics.IncrementIncomingRequests(peerIP)
+	if m.perIP {
+		if !seeding {
+			metrics.IncrementIncomingRequests(peerIP)
+		}
+		metrics.SetIncomingPeerLastSeen(peerIP, float64(entryTime.Unix()))
 	}
-	metrics.SetIncomingPeerLastSeen(peerIP, float64(entryTime.Unix()))
 	if m.registerPeer != nil {
 		m.registerPeer(peerIP, peermon.Inbound)
 	}
@@ -286,10 +314,12 @@ func (m *GossipMonitor) updateChildPeerState(currentPeers map[string]PeerStatus)
 			continue
 		}
 		if now.Sub(state.lastSeen) > childPeerStaleTTL {
-			metrics.RemoveChildPeerConnected(ip, state.verified)
-			metrics.RemoveChildPeerConnections(ip)
 			delete(m.knownChildPeers, ip)
-		} else {
+			if m.perIP {
+				metrics.RemoveChildPeerConnected(ip, state.verified)
+				metrics.RemoveChildPeerConnections(ip)
+			}
+		} else if m.perIP {
 			metrics.SetChildPeerConnected(ip, state.verified, false)
 			metrics.SetChildPeerConnections(ip, 0)
 		}
@@ -306,7 +336,9 @@ func (m *GossipMonitor) updateActivePeers() {
 			active++
 		} else {
 			delete(m.peerLastSeen, ip)
-			metrics.RemoveIncomingPeerLastSeen(ip)
+			if m.perIP {
+				metrics.RemoveIncomingPeerLastSeen(ip)
+			}
 		}
 	}
 

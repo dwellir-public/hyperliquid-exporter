@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `hl_p2p_gossip_events_total{event_type}` and `hl_p2p_gossip_unknown_events_total`: gossip_connections events are matched against the 15-tag allowlist from upstream v4.1.1 with per-tag payload validation (both the pre- and post-2026-08 shapes of `closing gossip stream because no quorum yet`, `dropping connection after sending abci state`, `sending evm kvs` and `marking node_ip as verified` are accepted). Unknown tags land in `other` and bump the unknown counter, so hl-node adding an event type is visible
+- `hl_exporter_source_up{stream}`, `hl_exporter_source_sample_age_seconds{stream}` and `hl_exporter_parse_errors_total{stream,stage}` for the `gossip_rpc`, `gossip_connections` and `tcp_traffic` streams. "No peers" and "source unreadable" were previously indistinguishable. The generalized parse-error counter stands in for upstream's per-stream `hl_p2p_gossip_parse_errors_total`; use `stream="gossip_connections"`
+- `hl_node_parent_peer_share_ratio` and `hl_node_parent_peer_challenger_ratio` expose the evidence behind the current parent choice
 - `hl_exporter_monitor_panics_total{monitor}`: every monitor goroutine now runs with panic recovery. A panic is logged with its stack and counted instead of killing the process
 - `hl_timeout_rounds_total` is now actually populated: the consensus log's `["round advance", ...]` events are parsed in the consensus monitor. The previous standalone round-advance monitor read the wrong stream and was never started. Both the legacy string reason and the current tagged-object reason (`{"Tc": {...}}`) are accepted; `suspect` carries hl-node's enum (e.g. `NoVote`)
 - `internal/actiontypes`: bounded action-type vocabulary ported from upstream v4.0.7, adding `outcomeDeploy` and `trailingStop`. Unknown action types are reported as `other` instead of becoming raw labels
@@ -21,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Gossip, gossip connections, outbound peer and parent peer tailers drain the previous hour file once more before switching to the new one, so lines written just before rollover are not lost
 - Gossip and gossip connections monitors seed from the current hour on restart with counters suppressed, matching the tcp_traffic readers. `hl_p2p_incoming_requests_total`, `hl_p2p_stream_connections_total` and `hl_p2p_verifications_total` no longer replay up to an hour of increments on every restart
 - Child peer state is reconciled per `child_peers status` snapshot instead of accumulating across all snapshots in a poll
+- Parent peer selection is stable: per-IP inbound volume is aggregated across ports and smoothed with an EWMA (alpha 0.3), a challenger needs 1.2x the incumbent's smoothed value to take over, exact ties break on the lowest IP, and the parent is cleared after 90 s without inbound traffic. Previously the largest single-sample flow won each poll and ties depended on map iteration order. The ambiguity warning log is replaced by the challenger ratio gauge. `hl_node_parent_peer_traffic_volume_total` now accrues to the selected parent rather than the per-line top flow
+- `tcp_traffic` is parsed once per poll and shared by peer discovery and parent selection. The parser is strict: any malformed row rejects the whole record (arity, IP via `netip` with IPv4-mapped addresses unmapped, port, NaN/Inf/negative values, unknown direction), counted in `hl_exporter_parse_errors_total{stream="tcp_traffic"}`
+- Peers discovered from `tcp_traffic` are admitted to the latency set only after two consecutive samples with positive traffic while in the top 16 endpoints of their direction. Previously every endpoint in every sample was registered, including zero-volume ones
+- The peer prober tries the port observed in `tcp_traffic` before the fallback list when a peer has no probe-proven port yet
+- Per-`peer_ip` gossip series (`hl_p2p_incoming_requests_total`, `hl_p2p_incoming_peer_last_seen`, `hl_p2p_child_peer_connected`, `hl_p2p_child_peer_connections`, `hl_p2p_stream_connections_total`, `hl_p2p_verifications_total`) are published only with `--peer-latency`. Without the flag they created unbounded label cardinality with no consumer; aggregate gauges are unaffected
 - Public IP lookup reads `$NODE_HOME/last_known_public_ip.json` first and falls back to ipify with a 5 s timeout. Failure logs a warning instead of aborting startup
 - A metrics port that cannot be bound now fails startup with a non-zero exit instead of leaving a metric-less process running
 - Validator latency files are keyed by UTC date, matching hl-node, instead of local time
@@ -38,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Status log lines over 64 KiB no longer fail to read; the last-line scanner buffer is raised to 8 MiB
 - Consensus wrapper identity under the new `sender` key (hl-node builds since 2026-09) is accepted alongside the old `source` key, restoring heartbeat ack attribution
 - Validator latency reader resets its offset when the file is truncated or replaced in place, not only when the date changes
+- The persisted peer set is loaded before any log producer can register a peer, and loading skips invalid IPs and entries unseen for over 48 h instead of overwriting a fresher in-memory entry
 
 ### Removed
 

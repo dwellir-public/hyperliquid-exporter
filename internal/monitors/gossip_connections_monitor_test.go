@@ -213,3 +213,69 @@ func TestProcessConnectionsFile_SeedingRegistersWithoutCounting(t *testing.T) {
 	defer mu.Unlock()
 	assert.ElementsMatch(t, []string{"192.168.108.167", "192.168.108.236"}, seen)
 }
+
+func TestParseGossipConnectionLine(t *testing.T) {
+	cases := []struct {
+		name  string
+		line  string
+		event string
+		known bool
+		stage string
+	}{
+		{"handle stream", `["2026-03-30T05:00:03.399",["handle_stream_connection","192.168.108.167:50850","gossip"]]`, "handle_stream_connection", true, ""},
+		{"verified rpc", `["2026-03-30T05:00:09.841",["verified gossip rpc",{"Ip":"192.168.108.236"}]]`, "verified_gossip_rpc", true, ""},
+		{"finished checks legacy", `["2026-03-30T05:00:09.841",["finished checks",{"Ip":"1.2.3.4"},true]]`, "finished_checks", true, ""},
+		{"no quorum legacy", `["2026-03-30T05:00:09.841",["closing gossip stream because no quorum yet",{"Ip":"1.2.3.4"},false]]`, "closing_gossip_stream_no_quorum_yet", true, ""},
+		{"no quorum new", `["2026-03-30T05:00:09.841",["closing gossip stream because no quorum yet","1.2.3.4:4001",["a"]]]`, "closing_gossip_stream_no_quorum_yet", true, ""},
+		{"abci drop bool", `["2026-03-30T05:00:09.841",["dropping connection after sending abci state",{"Ip":"1.2.3.4"},true]]`, "dropping_connection_after_sending_abci_state", true, ""},
+		{"abci drop string", `["2026-03-30T05:00:09.841",["dropping connection after sending abci state",{"Ip":"1.2.3.4"},"done"]]`, "dropping_connection_after_sending_abci_state", true, ""},
+		{"evm kvs object only", `["2026-03-30T05:00:09.841",["sending evm kvs",{"Ip":"1.2.3.4"}]]`, "sending_evm_kvs", true, ""},
+		{"verified object only rejected", `["2026-03-30T05:00:09.841",["finished checks",{"Ip":"1.2.3.4"}]]`, "", true, "payload"},
+		{"unknown tag", `["2026-03-30T05:00:09.841",["brand new event",{"Ip":"1.2.3.4"}]]`, "other", false, ""},
+		{"handle stream arity", `["2026-03-30T05:00:03.399",["handle_stream_connection","192.168.108.167:50850"]]`, "", true, "payload"},
+		{"not json", `nope`, "", false, "json"},
+		{"outer arity", `["2026-03-30T05:00:03.399"]`, "", false, "shape"},
+		{"bad timestamp", `["soon",["verified gossip rpc",{"Ip":"1.2.3.4"}]]`, "", false, "timestamp"},
+		{"null tag", `["2026-03-30T05:00:03.399",[null]]`, "", false, "shape"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ev, stage := parseGossipConnectionLine([]byte(tc.line))
+			assert.Equal(t, tc.stage, stage)
+			if stage != "" {
+				return
+			}
+			assert.Equal(t, tc.event, ev.event)
+			assert.Equal(t, tc.known, ev.known)
+		})
+	}
+}
+
+func TestProcessConnectionsFile_UnknownEventStillProcessed(t *testing.T) {
+	m := newTestGossipConnectionsMonitor(t)
+	f := writeGossipFile(t, filepath.Join(m.dir, "20260330"),
+		`["2026-03-30T05:00:09.841",["brand new event",{"Ip":"1.2.3.4"}]]`,
+		`["2026-03-30T05:00:09.841",["verified gossip rpc",{"Ip":"192.168.108.236"}]]`,
+	)
+	newOffset, err := m.processFile(f, 0, false)
+	require.NoError(t, err)
+	assert.Greater(t, newOffset, int64(0))
+}
+
+func TestProcessConnectionsFile_PerIPCountersGated(t *testing.T) {
+	initTestMetrics(t)
+	var registered []string
+	register := func(ip string, _ peermon.PeerDirection) { registered = append(registered, ip) }
+
+	// without --peer-latency the peer is still discovered for registration
+	m := NewGossipConnectionsMonitor(&config.Config{NodeHome: t.TempDir()}, register)
+	assert.False(t, m.perIP)
+	f := writeGossipFile(t, filepath.Join(m.dir, "20260330"),
+		`["2026-03-30T05:00:09.841",["verified gossip rpc",{"Ip":"192.168.108.236"}]]`)
+	_, err := m.processFile(f, 0, false)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"192.168.108.236"}, registered)
+
+	m = NewGossipConnectionsMonitor(&config.Config{NodeHome: t.TempDir(), EnablePeerLatency: true}, register)
+	assert.True(t, m.perIP)
+}

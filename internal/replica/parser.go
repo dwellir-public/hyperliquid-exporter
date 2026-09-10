@@ -182,16 +182,16 @@ func (p *Parser) parseActionBundles(bundlesJSON json.RawMessage, actionCounts, o
 			operationCount := 1
 			switch actionType {
 			case ActionTypeOrder, ActionTypeTwapOrder:
-				if len(sa.Action.Orders) > 0 {
-					operationCount = countJSONArrayElements(sa.Action.Orders)
+				if n, ok := countJSONArrayElements(sa.Action.Orders); ok {
+					operationCount = n
 				}
 			case ActionTypeCancel, ActionTypeCancelByCloid:
-				if len(sa.Action.Cancels) > 0 {
-					operationCount = countJSONArrayElements(sa.Action.Cancels)
+				if n, ok := countJSONArrayElements(sa.Action.Cancels); ok {
+					operationCount = n
 				}
 			case ActionTypeBatchModify:
-				if len(sa.Action.Modifies) > 0 {
-					operationCount = countJSONArrayElements(sa.Action.Modifies)
+				if n, ok := countJSONArrayElements(sa.Action.Modifies); ok {
+					operationCount = n
 				}
 			}
 
@@ -203,52 +203,22 @@ func (p *Parser) parseActionBundles(bundlesJSON json.RawMessage, actionCounts, o
 	return nil
 }
 
-// counts elements in a JSON array without full parsing
-func countJSONArrayElements(data json.RawMessage) int {
-	// empty array has zero elements, not one
-	trimmed := bytes.TrimSpace(data)
-	if len(trimmed) >= 2 && len(bytes.TrimSpace(trimmed[1:len(trimmed)-1])) == 0 {
-		return 0
+// counts elements in a JSON array. ok is false when data is absent or not
+// an array, so callers can keep their default count.
+func countJSONArrayElements(data json.RawMessage) (count int, ok bool) {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	tok, err := dec.Token()
+	if err != nil || tok != json.Delim('[') {
+		return 0, false
 	}
-
-	// quick counting by looking for commas
-	// this is approximate but much faster than parsing
-	count := 1
-	inString := false
-	escaped := false
-	depth := 0
-
-	for _, b := range data {
-		if escaped {
-			escaped = false
-			continue
+	for dec.More() {
+		var elem json.RawMessage
+		if err := dec.Decode(&elem); err != nil {
+			return count, true
 		}
-
-		switch b {
-		case '"':
-			if !escaped {
-				inString = !inString
-			}
-		case '\\':
-			if inString {
-				escaped = true
-			}
-		case '[':
-			if !inString {
-				depth++
-			}
-		case ']':
-			if !inString {
-				depth--
-			}
-		case ',':
-			if !inString && depth == 1 {
-				count++
-			}
-		}
+		count++
 	}
-
-	return count
+	return count, true
 }
 
 // streams a replica_cmds file and calls the callback for each block

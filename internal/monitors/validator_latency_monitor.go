@@ -25,7 +25,8 @@ type ValidatorLatencyMonitor struct {
 	config        *config.Config
 	latencyDir    string
 	emaDir        string
-	lastProcessed map[string]filePos // Track last processed file+position per validator
+	lastProcessed map[string]filePos  // Track last processed file+position per validator
+	known         map[string]struct{} // validator dirs present in the previous poll
 	lastEMATime   time.Time
 }
 
@@ -62,6 +63,7 @@ func NewValidatorLatencyMonitor(cfg *config.Config) *ValidatorLatencyMonitor {
 		latencyDir:    filepath.Join(cfg.NodeHome, "data", "validator_latency"),
 		emaDir:        filepath.Join(cfg.NodeHome, "data", "validator_latency_ema"),
 		lastProcessed: make(map[string]filePos),
+		known:         make(map[string]struct{}),
 	}
 }
 
@@ -113,6 +115,9 @@ func (m *ValidatorLatencyMonitor) processLatencyFiles() error {
 		return fmt.Errorf("failed to read latency directory: %w", err)
 	}
 
+	seen := make(map[string]struct{}, len(entries))
+	today := time.Now().UTC().Format("20060102")
+
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -122,16 +127,19 @@ func (m *ValidatorLatencyMonitor) processLatencyFiles() error {
 		if !strings.HasPrefix(validator, "0x") {
 			continue
 		}
+		seen[validator] = struct{}{}
 
-		// process today's file
-		today := time.Now().UTC().Format("20060102")
 		filePath := filepath.Join(m.latencyDir, validator, today)
-
 		if err := m.processValidatorLatencyFile(validator, filePath); err != nil {
 			logger.DebugComponent("latency", "Error processing latency file for %s: %v", validator, err)
 			// continue with other validators
 		}
 	}
+
+	dropMissing(m.known, seen, func(validator string) {
+		delete(m.lastProcessed, validator)
+		metrics.RemoveValidatorLatencySeries(validator)
+	})
 
 	return nil
 }

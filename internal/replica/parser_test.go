@@ -9,55 +9,69 @@ import (
 // --- countJSONArrayElements ---
 
 func TestCountEmpty(t *testing.T) {
-	if got := countJSONArrayElements(json.RawMessage(`[]`)); got != 0 {
+	if got, _ := countJSONArrayElements(json.RawMessage(`[]`)); got != 0 {
 		t.Fatalf("got %d, want 0", got)
 	}
-	if got := countJSONArrayElements(json.RawMessage(` [ ] `)); got != 0 {
+	if got, _ := countJSONArrayElements(json.RawMessage(` [ ] `)); got != 0 {
 		t.Fatalf("got %d, want 0 for whitespace-only array", got)
 	}
 }
 
 func TestCountSingle(t *testing.T) {
-	if got := countJSONArrayElements(json.RawMessage(`[{"id":1}]`)); got != 1 {
+	if got, _ := countJSONArrayElements(json.RawMessage(`[{"id":1}]`)); got != 1 {
 		t.Fatalf("got %d, want 1", got)
 	}
 }
 
 func TestCountMultiple(t *testing.T) {
-	if got := countJSONArrayElements(json.RawMessage(`[1,2,3]`)); got != 3 {
+	if got, _ := countJSONArrayElements(json.RawMessage(`[1,2,3]`)); got != 3 {
 		t.Fatalf("got %d, want 3", got)
 	}
 }
 
 func TestCountNested(t *testing.T) {
 	// nested commas at depth>1 should not be counted
-	if got := countJSONArrayElements(json.RawMessage(`[1,[2,3],4]`)); got != 3 {
+	if got, _ := countJSONArrayElements(json.RawMessage(`[1,[2,3],4]`)); got != 3 {
 		t.Fatalf("got %d, want 3", got)
 	}
 }
 
 func TestCountEscapedComma(t *testing.T) {
-	if got := countJSONArrayElements(json.RawMessage(`["a,b","c"]`)); got != 2 {
+	if got, _ := countJSONArrayElements(json.RawMessage(`["a,b","c"]`)); got != 2 {
 		t.Fatalf("got %d, want 2", got)
 	}
 }
 
 func TestCountEscapedQuote(t *testing.T) {
-	if got := countJSONArrayElements(json.RawMessage(`["a\"b","c"]`)); got != 2 {
+	if got, _ := countJSONArrayElements(json.RawMessage(`["a\"b","c"]`)); got != 2 {
 		t.Fatalf("got %d, want 2", got)
 	}
 }
 
 func TestCountNestedObjects(t *testing.T) {
-	// depth tracking only counts [] brackets, so commas inside {} at depth 1
-	// are still counted — this means objects with internal commas inflate the count.
-	// The function is documented as "approximate but much faster than parsing".
+	// commas inside objects must not count as elements
 	data := `[{"a":1,"b":2},{"c":3}]`
-	got := countJSONArrayElements(json.RawMessage(data))
-	// 2 top-level commas between elements + 1 comma inside first object = 3 depth-1 commas
-	// actual elements = 2, but function returns 3 due to approximation
-	if got != 3 {
-		t.Fatalf("got %d, want 3 (approximate count)", got)
+	if got, _ := countJSONArrayElements(json.RawMessage(data)); got != 2 {
+		t.Fatalf("got %d, want 2", got)
+	}
+}
+
+func TestCountSingleOrder(t *testing.T) {
+	// one order with six fields is one operation
+	data := `[{"a":0,"b":true,"p":"100.5","s":"1.0","r":false,"t":{"limit":{"tif":"Gtc"}}}]`
+	if got, _ := countJSONArrayElements(json.RawMessage(data)); got != 1 {
+		t.Fatalf("got %d, want 1", got)
+	}
+}
+
+func TestCountNotArray(t *testing.T) {
+	for _, in := range []string{`{"a":1}`, `null`, ``} {
+		if _, ok := countJSONArrayElements(json.RawMessage(in)); ok {
+			t.Errorf("%q: ok = true, want false", in)
+		}
+	}
+	if got, ok := countJSONArrayElements(json.RawMessage(`[1,2`)); got != 2 || !ok {
+		t.Fatalf("got %d,%v, want 2,true for truncated array", got, ok)
 	}
 }
 

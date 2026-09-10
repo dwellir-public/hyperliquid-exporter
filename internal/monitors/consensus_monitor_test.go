@@ -105,9 +105,9 @@ func TestProcessBlockRaw(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		// verify QC signatures tracked
-		if len(m.qcSignatures) != 3 {
-			t.Errorf("expected 3 QC signature entries, got %d", len(m.qcSignatures))
+		// verify QC signers tracked
+		if len(m.qcSigners) != 3 {
+			t.Errorf("expected 3 QC signer entries, got %d", len(m.qcSigners))
 		}
 
 		// verify round tracked
@@ -140,8 +140,8 @@ func TestProcessBlockRaw(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if len(m.tcVotes) != 2 {
-			t.Errorf("expected 2 TC vote entries, got %d", len(m.tcVotes))
+		if m.lastBlockRound != 50 {
+			t.Errorf("expected lastBlockRound=50, got %d", m.lastBlockRound)
 		}
 	})
 
@@ -403,5 +403,52 @@ func TestProcessConsensusLineSenderKey(t *testing.T) {
 		if err := m.processConsensusLine(line); err != nil {
 			t.Errorf("%s key: %v", key, err)
 		}
+	}
+}
+
+func TestPruneSigners(t *testing.T) {
+	m := newTestConsensusMonitor(t)
+	now := time.Now()
+	m.qcSigners["stale"] = now.Add(-2 * signerTTL)
+	m.qcSigners["fresh"] = now
+	m.lastPrune = now.Add(-2 * pruneInterval)
+
+	m.pruneSigners(now)
+	if _, ok := m.qcSigners["stale"]; ok {
+		t.Error("stale signer not pruned")
+	}
+	if _, ok := m.qcSigners["fresh"]; !ok {
+		t.Error("fresh signer pruned")
+	}
+
+	// second call within pruneInterval is a no-op
+	m.qcSigners["stale"] = now.Add(-2 * signerTTL)
+	m.pruneSigners(now.Add(time.Second))
+	if _, ok := m.qcSigners["stale"]; !ok {
+		t.Error("prune ran before pruneInterval elapsed")
+	}
+}
+
+func TestDropMissing(t *testing.T) {
+	known := map[string]struct{}{"a": {}, "b": {}}
+	seen := map[string]struct{}{"b": {}, "c": {}}
+	var removed []string
+	dropMissing(known, seen, func(k string) { removed = append(removed, k) })
+
+	if len(removed) != 1 || removed[0] != "a" {
+		t.Errorf("removed = %v, want [a]", removed)
+	}
+	if _, ok := known["a"]; ok {
+		t.Error("known still holds a")
+	}
+	if _, ok := known["c"]; !ok {
+		t.Error("known missing c")
+	}
+
+	// an empty snapshot removes nothing and keeps known intact
+	removed = nil
+	dropMissing(known, map[string]struct{}{}, func(k string) { removed = append(removed, k) })
+	if len(removed) != 0 || len(known) != 2 {
+		t.Errorf("empty snapshot: removed=%v known=%v", removed, known)
 	}
 }

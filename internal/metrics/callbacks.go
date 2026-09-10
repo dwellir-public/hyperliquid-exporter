@@ -3,6 +3,8 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"slices"
+	"time"
 
 	api "go.opentelemetry.io/otel/metric"
 )
@@ -30,7 +32,7 @@ func RegisterCallbacks() error {
 			// labeled values
 			for instrument, values := range labeledValues {
 				for _, v := range values {
-					allLabels := append(v.labels, commonLabels...)
+					allLabels := slices.Concat(v.labels, commonLabels)
 					switch obs := instrument.(type) {
 					case api.Float64Observable:
 						o.ObserveFloat64(obs, v.value, api.WithAttributes(allLabels...))
@@ -38,6 +40,13 @@ func RegisterCallbacks() error {
 						o.ObserveInt64(obs, int64(v.value), api.WithAttributes(allLabels...))
 					}
 				}
+			}
+
+			// vote age is derived at scrape time from the last observed vote
+			now := time.Now()
+			for _, v := range lastVotes {
+				allLabels := slices.Concat(v.labels, commonLabels)
+				o.ObserveFloat64(HLConsensusVoteTimeDiffGauge, now.Sub(v.updatedAt).Seconds(), api.WithAttributes(allLabels...))
 			}
 
 			// collect memory stats

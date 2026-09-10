@@ -1,7 +1,6 @@
 package metrics
 
 import (
-	"sort"
 	"sync"
 	"time"
 
@@ -30,10 +29,14 @@ var (
 	metricsMutex  sync.RWMutex
 	currentValues = make(map[api.Observable]any)
 	labeledValues = make(map[api.Observable]map[string]labeledValue)
+	// latest vote log time per validator address; value is unused
+	lastVotes     = make(map[string]labeledValue)
 	callbacks     []api.Registration
-	// add cleanup ticker for labeledValues
 	cleanupTicker *time.Ticker
 )
+
+// votes older than this are dropped from hl_consensus_vote_time_diff_seconds
+const voteMaxAge = 24 * time.Hour
 
 // signerMap maps signer addr -> val address
 // using LRU cache
@@ -114,16 +117,16 @@ func initValidatorInfoCache() {
 	}
 }
 
-// start periodic cleanup of metric maps
+// start periodic pruning of time-bounded metric state
 func StartMetricsCleanup() {
 	if cleanupTicker != nil {
 		return
 	}
 
-	cleanupTicker = time.NewTicker(30 * time.Second) // Reduced from 5 minutes to 30 seconds
+	cleanupTicker = time.NewTicker(30 * time.Second)
 	go func() {
 		for range cleanupTicker.C {
-			cleanupLabeledValues()
+			pruneStaleVotes(voteMaxAge)
 		}
 	}()
 }
@@ -133,35 +136,5 @@ func StopMetricsCleanup() {
 	if cleanupTicker != nil {
 		cleanupTicker.Stop()
 		cleanupTicker = nil
-	}
-}
-
-// remove old entries from labeledValues map
-func cleanupLabeledValues() {
-	metricsMutex.Lock()
-	defer metricsMutex.Unlock()
-
-	// keep a reasonable number of labeled values per metric
-	const maxLabelsPerMetric = 200
-
-	for metric, labels := range labeledValues {
-		if len(labels) <= maxLabelsPerMetric {
-			continue
-		}
-
-		// evict the least recently updated entries
-		keys := make([]string, 0, len(labels))
-		for k := range labels {
-			keys = append(keys, k)
-		}
-		sort.Slice(keys, func(i, j int) bool {
-			return labels[keys[i]].updatedAt.After(labels[keys[j]].updatedAt)
-		})
-
-		newLabels := make(map[string]labeledValue, maxLabelsPerMetric)
-		for _, k := range keys[:maxLabelsPerMetric] {
-			newLabels[k] = labels[k]
-		}
-		labeledValues[metric] = newLabels
 	}
 }

@@ -18,7 +18,7 @@ commit: 37891c7
 | `hl_core_last_processed_round` | Gauge | - | Last processed consensus round | `--replica-metrics` |
 | `hl_core_last_processed_time` | Gauge | - | Unix timestamp of last processed block | `--replica-metrics` |
 | `hl_core_operations_per_block` | Histogram | - | Distribution of operations per block | `--replica-metrics` |
-| `hl_core_operations_total` | Counter | `type`, `category` | Total individual operations by type and category | `--replica-metrics` |
+| `hl_core_operations_total` | Counter | `type`, `category` | Total individual operations by type and category (one element of an `orders`, `cancels` or `modifies` array is one operation) | `--replica-metrics` |
 | `hl_core_orders_total` | Counter | - | Total orders placed | `--replica-metrics` |
 | `hl_core_rounds_processed` | Counter | - | Total consensus rounds processed | `--replica-metrics` |
 | `hl_core_tx_per_block` | Histogram | - | Distribution of transactions per block | `--replica-metrics` |
@@ -154,7 +154,7 @@ When the parent changes, the old peer's labeled metrics are removed and the swit
 | `hl_consensus_inactive_stake` | Gauge | - | Total stake of inactive validators | - |
 | `hl_consensus_jailed_stake` | Gauge | - | Total stake of jailed validators | - |
 | `hl_consensus_not_jailed_stake` | Gauge | - | Total stake of non-jailed validators | - |
-| `hl_consensus_proposer_count_total` | Counter | `validator`, `signer`, `name` | Blocks proposed per validator | - |
+| `hl_consensus_proposer_count_total` | Counter | `validator`, `signer`, `name` | Blocks proposed per validator; `name` is omitted until the validator API has supplied the moniker | - |
 | `hl_consensus_total_stake` | Gauge | - | Total network stake | - |
 | `hl_consensus_validator_active_status` | Gauge | `validator`, `signer`, `name` | Validator active status (0=inactive, 1=active) | - |
 | `hl_consensus_validator_count` | Gauge | - | Total number of validators | - |
@@ -186,7 +186,7 @@ The above are available to all node types, while the below metrics require acces
 | `hl_consensus_validator_latency_round` | Gauge | `validator`, `signer`, `name` | Consensus round when latency was last measured | Validator node with latency monitoring |
 | `hl_consensus_validator_latency_seconds` | Gauge | `validator`, `signer`, `name` | Current network latency to validator in seconds | Validator node with latency monitoring |
 | `hl_consensus_vote_round` | Gauge | `validator`, `signer`, `name` | Last voting round for each validator | Validator node |
-| `hl_consensus_vote_time_diff_seconds` | Gauge | `validator`, `signer`, `name` | Seconds since validator's last vote | Validator node |
+| `hl_consensus_vote_time_diff_seconds` | Gauge | `validator`, `signer`, `name` | Seconds since the validator's last observed vote (scrape time minus the vote's log timestamp); series dropped after 24 h without a vote | Validator node |
 
 ### Consensus Monitor Health Metrics
 

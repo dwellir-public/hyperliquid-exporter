@@ -2,6 +2,7 @@ package monitors
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"time"
 
@@ -19,8 +20,10 @@ func StartValidatorMonitor(ctx context.Context, cfg config.Config, errCh chan<- 
 	hlResolver = hyperliquidapi.NewResolver(cfg.Chain)
 
 	safego.Go("consensus", func() {
+		known := make(map[string]struct{})
+
 		// run immediately on startup to populate mappings
-		if err := updateValidatorMetrics(ctx, cfg); err != nil {
+		if err := updateValidatorMetrics(ctx, cfg, known); err != nil {
 			logger.Error("Initial validator monitor update error: %v", err)
 			errCh <- err
 		}
@@ -33,7 +36,7 @@ func StartValidatorMonitor(ctx context.Context, cfg config.Config, errCh chan<- 
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if err := updateValidatorMetrics(ctx, cfg); err != nil {
+				if err := updateValidatorMetrics(ctx, cfg, known); err != nil {
 					logger.Error("Validator monitor error: %v", err)
 					errCh <- err
 				}
@@ -42,12 +45,16 @@ func StartValidatorMonitor(ctx context.Context, cfg config.Config, errCh chan<- 
 	})
 }
 
-func updateValidatorMetrics(ctx context.Context, cfg config.Config) error {
+// known holds the validators seen in the previous snapshot; validators that
+// disappear have their per-validator series removed instead of freezing.
+func updateValidatorMetrics(ctx context.Context, cfg config.Config, known map[string]struct{}) error {
 	// use resolver to get val summaries
 	summaries, err := hlResolver.GetValidatorSummaries(ctx, false)
 	if err != nil {
 		return err
 	}
+
+	seen := make(map[string]struct{}, len(summaries))
 
 	totalStake := 0.0
 	jailedStake := 0.0
@@ -57,6 +64,8 @@ func updateValidatorMetrics(ctx context.Context, cfg config.Config) error {
 	mappingCount := 0
 
 	for _, summary := range summaries {
+		seen[summary.Validator] = struct{}{}
+
 		// register signer->val mapping (lowercase for consistency)
 		metrics.RegisterSignerMapping(strings.ToLower(summary.Signer), strings.ToLower(summary.Validator))
 		mappingCount++
@@ -106,7 +115,25 @@ func updateValidatorMetrics(ctx context.Context, cfg config.Config) error {
 	metrics.SetInactiveStake(inactiveStake)
 	metrics.SetValidatorCount(int64(len(summaries)))
 
+	dropMissing(known, seen, metrics.RemoveValidatorSeries)
 	return nil
+}
+
+// calls remove for every key in known that is absent from seen, then
+// replaces known's contents with seen. An empty snapshot is treated as a
+// failed read rather than an empty set so one bad poll cannot wipe every series.
+func dropMissing(known, seen map[string]struct{}, remove func(string)) {
+	if len(seen) == 0 {
+		return
+	}
+	for k := range known {
+		if _, ok := seen[k]; !ok {
+			remove(k)
+			logger.DebugComponent("consensus", "Validator %s left the set, removing series", k)
+		}
+	}
+	clear(known)
+	maps.Copy(known, seen)
 }
 
 // returns the HL resolver instance

@@ -25,9 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A metrics port that cannot be bound now fails startup with a non-zero exit instead of leaving a metric-less process running
 - Validator latency files are keyed by UTC date, matching hl-node, instead of local time
 - Operation `category` labels follow the upstream mapping: `spotDeploy` moved from `transfer` to `deployment`, `perpDeploy` from `other` to `deployment`
+- `hl_consensus_vote_time_diff_seconds` now reports the age of the last observed vote at scrape time (now minus the vote's log timestamp) and drops validators silent for 24 h. Previously it recorded the exporter's own parse lag per vote and sat near zero forever
+- Per-validator series (stake, jailed, active, RTT, QC participation, vote round, vote age, heartbeat status, latency, latency round, latency EMA) are removed when a validator leaves the set returned by the validator API. Latency series are also removed when a validator's latency directory disappears. Previously they froze at their last value
+- The 30 s labeled-series sweep that capped every labeled family at 200 entries by recency is removed. Above 200 validators it dropped stake, jailed and latency series every 30 s. Peer and connectivity series already remove themselves, and validator series are now reconciled explicitly
+- Consensus monitor signer tracking is bounded: signers unseen in a QC for 1 h are pruned every 10 min, and the signer-to-validator memo is an LRU with 1 h TTL. The unused TC vote counter map is removed
 
 ### Fixed
 
+- `hl_core_operations_total` counted every comma inside an order, cancel or modify object as a separate operation, inflating counts 2 to 6x. Elements are now counted with a JSON decoder; one order is one operation. Expect the counter's rate to drop accordingly after upgrading
+- `hl_consensus_proposer_count_total` now carries the `name` label. The moniker lookup was stubbed to return an empty string
 - Status log `current_stakes` wrapped as `{"validator_to_stake": [...]}` (hl-node builds since mid-2026) is now decoded; previously the validator set and signer mappings silently came up empty on current nodes
 - Status log lines over 64 KiB no longer fail to read; the last-line scanner buffer is raised to 8 MiB
 - Consensus wrapper identity under the new `sender` key (hl-node builds since 2026-09) is accepted alongside the old `source` key, restoring heartbeat ack attribution

@@ -130,12 +130,7 @@ func IncrementProposerCounter(proposer string) {
 		logger.Debug("No mapping found for signer %s, using signer as validator", signer)
 	}
 
-	// get the val moniker
 	name := GetValidatorName(validator)
-	if name == "" {
-		// if we can't find a name, try with the original case
-		name = GetValidatorName(strings.ToLower(validator))
-	}
 
 	// now register metric atomically
 	metricsMutex.Lock()
@@ -711,28 +706,84 @@ func SetValidatorLastVoteRound(validator string, round int64) {
 	}
 }
 
-func SetValidatorVoteTimeDiff(validator string, seconds float64) {
+// records the log timestamp of the latest vote observed from a validator.
+// hl_consensus_vote_time_diff_seconds is computed as now minus this at scrape.
+func SetValidatorLastVote(validator string, at time.Time) {
 	labels := getValidatorLabels(validator)
-
-	// extract the actual validator address from the labels for map key
-	var validatorAddr string
-	for _, label := range labels {
-		if label.Key == "validator" {
-			validatorAddr = label.Value.AsString()
-			break
-		}
-	}
+	validatorAddr := labelValue(labels, "validator")
 
 	metricsMutex.Lock()
 	defer metricsMutex.Unlock()
+	lastVotes[validatorAddr] = labeledValue{updatedAt: at, labels: labels}
+}
 
-	if _, exists := labeledValues[HLConsensusVoteTimeDiffGauge]; !exists {
-		labeledValues[HLConsensusVoteTimeDiffGauge] = make(map[string]labeledValue)
+// drops vote entries silent for longer than maxAge
+func pruneStaleVotes(maxAge time.Duration) {
+	cutoff := time.Now().Add(-maxAge)
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	for addr, v := range lastVotes {
+		if v.updatedAt.Before(cutoff) {
+			delete(lastVotes, addr)
+		}
 	}
-	labeledValues[HLConsensusVoteTimeDiffGauge][validatorAddr] = labeledValue{
-		updatedAt: time.Now(),
-		value:     seconds,
-		labels:    labels,
+}
+
+func labelValue(labels []attribute.KeyValue, key attribute.Key) string {
+	for _, l := range labels {
+		if l.Key == key {
+			return l.Value.AsString()
+		}
+	}
+	return ""
+}
+
+// per-validator families keyed by validator address
+var validatorLatencyFamilies = func() []api.Observable {
+	return []api.Observable{
+		HLConsensusValidatorLatencyGauge,
+		HLConsensusValidatorLatencyRoundGauge,
+		HLConsensusValidatorLatencyEMAGauge,
+	}
+}
+
+var validatorFamilies = func() []api.Observable {
+	return append([]api.Observable{
+		HLConsensusValidatorStakeGauge,
+		HLConsensusValidatorJailedStatus,
+		HLConsensusValidatorActiveStatus,
+		HLConsensusValidatorRTTGauge,
+		HLConsensusQCParticipationGauge,
+		HLConsensusVoteRoundGauge,
+	}, validatorLatencyFamilies()...)
+}
+
+// removes every per-validator series for a validator that left the set
+func RemoveValidatorSeries(validator string) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	removeValidatorKeys(validator, validatorFamilies())
+	delete(lastVotes, validator)
+	delete(lastVotes, strings.ToLower(validator))
+	// heartbeat status is keyed "<validator>_<status_type>"
+	for key := range labeledValues[HLConsensusHeartbeatStatusGauge] {
+		if addr, _, ok := strings.Cut(key, "_"); ok && strings.EqualFold(addr, validator) {
+			delete(labeledValues[HLConsensusHeartbeatStatusGauge], key)
+		}
+	}
+}
+
+// removes only the latency series for a validator whose latency directory is gone
+func RemoveValidatorLatencySeries(validator string) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	removeValidatorKeys(validator, validatorLatencyFamilies())
+}
+
+func removeValidatorKeys(validator string, families []api.Observable) {
+	for _, fam := range families {
+		delete(labeledValues[fam], validator)
+		delete(labeledValues[fam], strings.ToLower(validator))
 	}
 }
 

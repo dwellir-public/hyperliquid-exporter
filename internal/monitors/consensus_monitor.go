@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/validaoxyz/hyperliquid-exporter/internal/cache"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
@@ -22,6 +23,12 @@ import (
 )
 
 // stores QC participation data for sliding window calc
+const (
+	// signers silent in QCs for this long are dropped from participation zeroing
+	signerTTL     = time.Hour
+	pruneInterval = 10 * time.Minute
+)
+
 type qcWindowEntry struct {
 	timestamp time.Time
 	signers   []string
@@ -35,10 +42,12 @@ type heartbeatInfo struct {
 
 // monitors consensus-related logs and metrics
 type ConsensusMonitor struct {
-	config         *config.Config
-	qcSignatures   map[string]int64  // Track QC signatures per signer
-	tcVotes        map[string]int64  // Track TC votes per signer
-	validatorCache map[string]string // Map signer address to validator address
+	config *config.Config
+	// signers seen in a QC, keyed by signer with the time of the last sighting.
+	// Pruned after signerTTL so validators that left the set stop being zeroed.
+	qcSigners      map[string]time.Time
+	lastPrune      time.Time
+	validatorCache *cache.LRUCache // signer address -> validator address
 
 	// sliding window tracking for participation rates
 	qcWindow       []qcWindowEntry
@@ -77,9 +86,9 @@ type VerificationStats struct {
 func NewConsensusMonitor(cfg *config.Config) *ConsensusMonitor {
 	return &ConsensusMonitor{
 		config:          cfg,
-		qcSignatures:    make(map[string]int64),
-		tcVotes:         make(map[string]int64),
-		validatorCache:  make(map[string]string),
+		qcSigners:       make(map[string]time.Time),
+		lastPrune:       time.Now(),
+		validatorCache:  cache.NewLRUCache(1000, signerTTL),
 		qcWindow:        make([]qcWindowEntry, 0),
 		windowSize:      100,       // keep last 100 blocks for participation calculation
 		windowDuration:  time.Hour, // or calculate based on last hour
@@ -233,6 +242,9 @@ func (m *ConsensusMonitor) monitorConsensusLogs(ctx context.Context, errCh chan<
 					line, err := fileReader.ReadString('\n')
 					if err != nil {
 						if err == io.EOF {
+							// housekeeping runs from the tail goroutine so it
+							// needs no lock and still fires while logs are quiet
+							m.pruneSigners(time.Now())
 							time.Sleep(10 * time.Millisecond)
 							break
 						}
@@ -389,9 +401,7 @@ func (m *ConsensusMonitor) processVoteStruct(vote *ConsensusVoteMessage, timesta
 		metrics.SetValidatorLastVoteRound(formattedValidator, int64(vote.Round))
 	}
 
-	// update vote time difference
-	timeDiff := time.Since(timestamp).Seconds()
-	metrics.SetValidatorVoteTimeDiff(formattedValidator, timeDiff)
+	metrics.SetValidatorLastVote(formattedValidator, timestamp)
 
 	return nil
 }
@@ -451,8 +461,7 @@ func (m *ConsensusMonitor) processBlockRaw(blockData json.RawMessage) error {
 
 				formattedValidator := m.formatValidatorAddress(validator)
 
-				// track QC signatures
-				m.qcSignatures[validator]++
+				m.qcSigners[validator] = time.Now()
 
 				metrics.IncrementQCSignatures(formattedValidator)
 			}
@@ -494,8 +503,6 @@ func (m *ConsensusMonitor) processBlockRaw(blockData json.RawMessage) error {
 					// just format it directly
 					formattedValidator := m.formatValidatorAddress(timeout.Validator)
 
-					// track TC votes
-					m.tcVotes[timeout.Validator]++
 					metrics.IncrementTCParticipation(formattedValidator)
 				}
 			}
@@ -519,15 +526,14 @@ func (m *ConsensusMonitor) processBlockRaw(blockData json.RawMessage) error {
 
 // returns the validator address for a given signer
 func (m *ConsensusMonitor) getValidatorForSigner(signer string) string {
-	// first check cache
-	if validator, ok := m.validatorCache[signer]; ok {
-		return validator
+	if validator, ok := m.validatorCache.Get(signer); ok {
+		return validator.(string)
 	}
 
 	// try to get from metrics package (which maintains a global mapping)
 	validator, exists := metrics.GetValidatorForSigner(signer)
 	if exists && validator != "" {
-		m.validatorCache[signer] = validator
+		m.validatorCache.Set(signer, validator)
 		return validator
 	}
 
@@ -666,10 +672,24 @@ func (m *ConsensusMonitor) updateQCParticipationRates() {
 	}
 
 	// set rate to 0 for validators who haven't participated
-	for validator := range m.qcSignatures {
+	for validator := range m.qcSigners {
 		if _, exists := participationCount[validator]; !exists {
 			formattedValidator := m.formatValidatorAddress(validator)
 			metrics.SetQCParticipationRate(formattedValidator, 0)
+		}
+	}
+}
+
+// forgets signers not seen in a QC for signerTTL, at most once per pruneInterval
+func (m *ConsensusMonitor) pruneSigners(now time.Time) {
+	if now.Sub(m.lastPrune) < pruneInterval {
+		return
+	}
+	m.lastPrune = now
+	cutoff := now.Add(-signerTTL)
+	for signer, seen := range m.qcSigners {
+		if seen.Before(cutoff) {
+			delete(m.qcSigners, signer)
 		}
 	}
 }

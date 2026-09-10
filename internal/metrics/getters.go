@@ -1,5 +1,7 @@
 package metrics
 
+import "strings"
+
 func IsValidator() bool {
 	metricsMutex.Lock()
 	defer metricsMutex.Unlock()
@@ -19,9 +21,8 @@ func GetValidatorStakes() map[string]float64 {
 	return stakes
 }
 
-// returns name/moniker for a validator address
+// returns the moniker registered for a validator address, or "" if unknown
 func GetValidatorName(validatorAddr string) string {
-	// is deprecated. names are resolved at data collection time
-	// return empty to avoid lock contention during metrics collection
-	return ""
+	_, name, _ := GetValidatorInfo(strings.ToLower(validatorAddr))
+	return name
 }

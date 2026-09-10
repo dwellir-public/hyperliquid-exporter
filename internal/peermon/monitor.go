@@ -8,6 +8,7 @@ import (
 
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 )
 
 const (
@@ -167,7 +168,8 @@ func (m *Monitor) probeAll(ctx context.Context, peers []Peer) {
 		}
 
 		wg.Add(1)
-		go func(peer Peer) {
+		peer := p
+		safego.Go("peer-latency", func() {
 			defer wg.Done()
 			defer func() { <-sem }()
 
@@ -197,7 +199,7 @@ func (m *Monitor) probeAll(ctx context.Context, peers []Peer) {
 				}
 				metrics.IncrementPeerProbeFailures(peer.IP)
 			}
-		}(p)
+		})
 	}
 
 	wg.Wait()

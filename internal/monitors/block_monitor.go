@@ -16,6 +16,7 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/utils"
 )
 
@@ -56,15 +57,15 @@ func StartBlockMonitor(ctx context.Context, cfg config.Config, errCh chan<- erro
 	if fastExists || slowExists {
 		logger.InfoComponent("core", "Detected new dual-state block time directories")
 		if fastExists {
-			go monitorBlockState(ctx, cfg, errCh, "fast", "node_fast_block_times")
+			safego.Go("core", func() { monitorBlockState(ctx, cfg, errCh, "fast", "node_fast_block_times") })
 		}
 		if slowExists {
-			go monitorBlockState(ctx, cfg, errCh, "slow", "node_slow_block_times")
+			safego.Go("core", func() { monitorBlockState(ctx, cfg, errCh, "slow", "node_slow_block_times") })
 		}
 	} else if oldExists {
 		// fallback to old single-directory format for backward compatibility
 		logger.InfoComponent("core", "Using legacy single block_times directory (node not yet upgraded)")
-		go monitorLegacyBlockState(ctx, cfg, errCh)
+		safego.Go("core", func() { monitorLegacyBlockState(ctx, cfg, errCh) })
 	} else {
 		logger.WarningComponent("core", "No block time directories found - block monitoring disabled")
 	}

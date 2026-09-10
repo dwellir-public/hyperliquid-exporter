@@ -13,11 +13,12 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/utils"
 )
 
 func StartProposalMonitor(ctx context.Context, cfg config.Config, errCh chan<- error) {
-	go func() {
+	safego.Go("consensus", func() {
 		// skip if replica monitoring is enabled as it will handle proposer counting
 		if cfg.EnableReplicaMetrics {
 			// already logged in exporter.go, just return silently
@@ -107,7 +108,7 @@ func StartProposalMonitor(ctx context.Context, cfg config.Config, errCh chan<- e
 				}
 			}
 		}
-	}()
+	})
 }
 
 func parseProposalLine(ctx context.Context, line string) error {

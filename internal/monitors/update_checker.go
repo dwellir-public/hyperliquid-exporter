@@ -12,6 +12,7 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 )
 
 const (
@@ -24,7 +25,7 @@ var (
 )
 
 func StartUpdateChecker(ctx context.Context, cfg config.Config, errCh chan<- error) {
-	go func() {
+	safego.Go("system", func() {
 		// wait a bit for version monitor to run first
 		time.Sleep(2 * time.Second)
 
@@ -46,7 +47,7 @@ func StartUpdateChecker(ctx context.Context, cfg config.Config, errCh chan<- err
 				}
 			}
 		}
-	}()
+	})
 }
 
 func checkSoftwareUpdate(ctx context.Context, cfg config.Config) error {

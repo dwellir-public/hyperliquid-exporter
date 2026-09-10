@@ -1,11 +1,12 @@
 # Upstream Port Plan (validaoxyz v3.0.0 to v4.1.1)
 
 **Date:** 2026-09-10
-**Commit:** b41c7bd (main), upstream/main at b150dcc (v4.1.1)
+**Commit:** 447a838 (main), upstream/main at b150dcc (v4.1.1)
+**Status:** all work below is unreleased. Phases are release-sized units; version numbers are assigned at release prep, not here.
 
 ## TL;DR
 
-Our fork descends from upstream v2.0.0 (upstream commit `7ba273a`). Since March 2026 upstream shipped v3.0.0, v3.1.0, v4.0.6, v4.0.7, v4.1.0 and v4.1.1, roughly 41k added lines. Three of those releases fix hl-node log schema changes that our parsers do not handle, so several of our metrics are silently zero or wrong on current nodes. The two git histories share no merge base, so nothing cherry-picks; every item below is a manual, content-level port. This plan lists what to port, where the source lives, and in what order, split into tiers by urgency. It also adds a routine for tracking upstream and the hl-node log surface so the drift does not recur.
+Our fork descends from upstream v2.0.0 (upstream commit `7ba273a`). Since March 2026 upstream shipped v3.0.0, v3.1.0, v4.0.6, v4.0.7, v4.1.0 and v4.1.1, roughly 41k added lines. Three of those releases fix hl-node log schema changes that our parsers do not handle, so several of our metrics are silently zero or wrong on current nodes. The two git histories share no merge base, so nothing cherry-picks; every item below is a manual, content-level port. This plan lists what to port, where the source lives, and in what order, split into tiers by urgency. Decisions that were open in the first draft are settled in the Decisions section. It also adds a routine for tracking upstream and the hl-node log surface so the drift does not recur.
 
 ## Problem Statement
 
@@ -27,7 +28,7 @@ Upstream has diverged into a large rewrite while our fork added peer monitoring 
 
 ## Non-Goals
 
-- Adopting upstream's v4.0.6 metric renames (about 35 breaking renames and label drops, listed in `git show upstream/main:UPGRADING.md`). Cost is every dashboard, alert and charm cutover; benefit is compatibility with an alert bundle we cannot use without their source-state layer. Use upstream names only for metrics we port fresh, and record the mapping in `BREAKING_CHANGES.md`.
+- Adopting upstream's v4.0.6 metric renames (about 35 breaking renames and label drops, listed in `git show upstream/main:UPGRADING.md`). Cost is every dashboard, alert and charm cutover; benefit is compatibility with an alert bundle we cannot use without their source-state layer. Use upstream names only for metrics we port fresh (see Decisions).
 - Adopting upstream's `stream.go`, `source_state.go` and `health.go` wholesale (about 1200 lines plus a convention every monitor must follow). Borrow the mechanics where a tier calls for them.
 - Porting `tokio_runtime`, `tcp_lz4`, `tmp_dir`, `subsystem_steps`, `consensus_rpc`, `validator_connections`, `peer_set` monitors. Low operator value or coupled to upstream's rewritten consensus monitor.
 - Rebasing onto upstream or re-forking.
@@ -42,7 +43,7 @@ Source locations used throughout:
 |---|---|
 | `up:<path>` | `git show upstream/main:<path>` (v4.1.1, `b150dcc`) |
 | `<hash>` | upstream commit, `git show <hash>` |
-| `ours:<path>` | our tree at `b41c7bd` |
+| `ours:<path>` | our tree at `447a838` (line numbers verified at that commit) |
 
 Upstream release to commit map:
 
@@ -56,6 +57,20 @@ Upstream release to commit map:
 | v4.1.1 | 2026-09-10 | `d30125a`, `3be57c9`, `0ad0e88`, `88b74b3` |
 
 Changelog: `up:CHANGELOG.md`. Migration notes: `up:UPGRADING.md`. Their audit rationale: `up:HL_NODE_METRICS_AUDIT.md`.
+
+### Decisions
+
+Settled here so implementers do not re-derive them.
+
+- **Naming.** Existing metrics keep our names. Metrics ported fresh in Tier 5 and 6 use the upstream v4 name verbatim, so upstream alert rules for those metrics apply unchanged. Record new names in `docs/metrics-overview.md` (or its generated successor), not `BREAKING_CHANGES.md`; nothing existing breaks.
+- **Flags.** One flag per new monitor. Default on for monitors that only read local files or procfs (process, child_stderr, visor, node_state, disk, operator_config, crit_msg, snapshot_status). Default off for anything that touches the network (`--binary-metrics`, `--probe-info-endpoint`). No umbrella `--extended-metrics` flag.
+- **`--binary-metrics` default off, now.** The current update checker downloads hl-visor every cycle and compares the wrong binaries. Off is the correct default until the charm exposes the flag.
+- **Validator-only monitors** (operator_config, accumulator_consensus) start only when `config.IsValidator` is true. No new flag; the identity check at `cmd/hyperliquid-exporter/main.go:145` already exists.
+- **Series sweep gate.** Peer and connectivity series already remove themselves (`peermon/monitor.go:195`, `gossip_monitor.go:228-305`, `parent_peer_monitor.go:182`, `consensus_monitor.go:854`). The only unbounded labeled families are per-validator gauges, so 3.4 is the sole prerequisite for deleting the sweep in 2.3.
+- **Rescan gate value (2.1).** 2 s for call sites inside EOF loops (block, consensus, replica, evm, proposal, round_advance, validator_status). No gate for pollers that already sleep 30 s or more (gossip, validator_ip).
+- **0.3 before 4.1.** 0.3 is the hl-node schema break and ships in phase 1 as a two-line patch. 4.1 rewrites the same file but depends on the 2.1 resolver, so it stays in phase 2 and absorbs 0.3 there.
+- **Fixtures for schema watch (7.2).** Commit a trimmed sample (about 20 lines per stream) under `internal/monitors/testdata/schema/` so the drift test runs in CI. The full hour pulled by the routine stays gitignored under `testdata/live/` for local runs.
+- **Cross-repo CI survey** is out of scope for this plan. See Follow-ups.
 
 ---
 
@@ -113,7 +128,7 @@ func (c *currentStakes) UnmarshalJSON(b []byte) error // accepts [[...]] or {"va
 
 - Upstream: `c937bbf` (v3.0.0). `up:internal/exporter/safego.go` (about 40 lines) and `up:internal/monitors/safego.go` (47 lines).
 - Ours: `grep -rn 'recover()' internal cmd` returns nothing. `Start` in `ours:internal/exporter/exporter.go:44-128` launches about 18 bare `go` statements.
-- Change: copy both files. Wrap every launch in `exporter.go` and every inner goroutine in monitors. Add `hl_exporter_monitor_panics_total{monitor}` counter to `instruments.go`.
+- Change: one shared package `internal/safego` (`Go(name, fn)`) used by exporter, monitors and peermon instead of upstream's two per-package files. Wrap every launch in `exporter.go` and every inner goroutine in monitors and peermon. Add `hl_exporter_monitor_panics_total{monitor}` counter to `instruments.go`.
 
 ```go
 // internal/exporter/safego.go
@@ -122,15 +137,11 @@ func runMonitor(ctx context.Context, name string, errCh chan<- error, fn func(co
 func SafeGo(name string, fn func())
 ```
 
-Highest value per line in this plan. Land it first; it makes every later change non-fatal.
+Highest value per line in this plan. Land it first; it makes every later change non-fatal. Test: a unit test on the wrapper with a function that panics, asserting the counter increments and the test process survives. The wrapper logs the panic directly instead of feeding the per-monitor error channel, whose consumer only logs. No test-only monitor or build tag.
 
 ### 1.2 Contract resolver send on closed channel
 
-Obsolete: `internal/contracts/` and `hl_evm_contract_tx_total` were removed after Hyperscan's API went away.
-
-- Upstream: `2dc5aa9` (v3.1.0), `Shutdown` in `up:internal/contracts/resolver.go`.
-- Ours: `Shutdown` at `ours:internal/contracts/resolver.go:332` closes `fetchQueue` (created at line 86) while the EVM stream can still send at line 167. Send on closed channel panics even under `select`.
-- Change: delete the `close(r.fetchQueue)`; drain via context cancellation.
+Dropped. `internal/contracts/` was removed in `447a838` (Unreleased), taking the bug with it.
 
 ### 1.3 Public IP lookup blocks startup
 
@@ -158,11 +169,7 @@ Obsolete: `internal/contracts/` and `hl_evm_contract_tx_total` were removed afte
 
 ### 1.7 `--contract-metrics-limit` does not cap series
 
-Obsolete: the flag and metric were removed together with `internal/contracts/`.
-
-- Upstream: `d9f74f4` (v3.1.0). First N addresses keep their series, the rest roll into `contract_address="other"`. Upstream observed 7,140 series before the fix.
-- Ours: the flag only sizes a lookup cache, `ours:internal/monitors/evm_monitor.go:46,55`.
-- Change: hard-cap at label-emission time.
+Dropped. The flag and `hl_evm_contract_tx_total` were removed in `447a838` together with `internal/contracts/`.
 
 ### 1.8 Peer registry load race
 
@@ -177,7 +184,7 @@ Obsolete: the flag and metric were removed together with `internal/contracts/`.
 
 - Upstream: `f38ddb6` (v3.1.0). Replaces `GetLatestFile` with `up:internal/utils/latest_files.go` (185 lines, non-recursive `os.ReadDir` resolvers with lexicographic date and numeric hour sort) and `up:internal/monitors/stream.go` (451 lines, tailer with 2 to 5 s rescan gating). A smaller self-contained resolver is `latestHourlyFile` at `up:internal/monitors/visor_monitor.go:295-328`.
 - Ours: `GetLatestFile` at `ours:internal/utils/utils.go:10` is `filepath.Walk` over the whole tree. Call sites: `block_monitor.go:93,265`, `consensus_monitor.go:537,694`, `validator_status_monitor.go:72,235,315`, `replica_monitor.go:93`, `evm_monitor.go:110`, `validator_ip_monitor.go:106`, `gossip_monitor.go:318,321`, `proposal_monitor.go:50`, `round_advance_monitor.go:49`. Several sit inside 10 ms EOF loops.
-- Change (cheap 80% variant, one file): rewrite `GetLatestFile` as a two-level `ReadDir` resolver (`<date>/<hour>` layout) and add a per-caller rescan gate.
+- Change (cheap 80% variant, one file): rewrite `GetLatestFile` as a two-level `ReadDir` resolver (`<date>/<hour>` layout) and add a per-caller rescan gate (2 s in EOF loops, none for slow pollers; see Decisions).
 
 ```go
 // internal/utils/utils.go
@@ -198,7 +205,7 @@ Also replace `getLatestHourlyFile` in `ours:internal/monitors/gossip_monitor.go:
 
 - Upstream: `2cb58cd` removed the sweep entirely.
 - Ours: sweep at `ours:internal/metrics/types.go:141-176` caps every labeled family at 200 by LRU. Above 200 validators it drops stake, jailed and latency series every 30 s. Tests pinning this: `ours:internal/metrics/cleanup_test.go:53,101`.
-- Change: delete the sweep and its tests. Prerequisite: 3.4 (validator reconciliation), otherwise cardinality is unbounded.
+- Change: delete the sweep and its tests. Prerequisite: 3.4 (validator reconciliation). See Decisions for why nothing else gates it.
 
 ### 2.4 Consensus per-line lock churn
 
@@ -250,13 +257,14 @@ Also replace `getLatestHourlyFile` in `ours:internal/monitors/gossip_monitor.go:
 
 - Upstream: `2cb58cd` (compare local hl-visor to published hl-visor, ETag conditional requests, no curl), `10cc834` (v4.1.0, behind `--binary-metrics`, off by default). `up:internal/monitors/update_checker.go:21,113-165`, `up:internal/monitors/version_monitor.go`.
 - Ours: downloads `hl-visor` to a temp file every cycle at `ours:internal/monitors/update_checker.go:62-68`; compares against local hl-node.
-- Change: port both. Adopt `--binary-metrics` default-off; the charm decides whether to enable it.
+- Change: port both behind `--binary-metrics`, default off (Decisions).
 
 ### 3.8 Heartbeat ack correlation
 
 - Upstream: `3be57c9`, `0ad0e88`, `88b74b3` (v4.1.1), heartbeat section of `up:internal/monitors/consensus_monitor.go`. Join acks to a unique outgoing heartbeat by random ID and round; preserve full vs abbreviated identities; reject ambiguous joins.
 - Ours: `map[float64]heartbeatInfo` keyed on random ID only at `ours:internal/monitors/consensus_monitor.go:29-30,55,86,339`; `RecordHeartbeatAckDelay` at `setters.go:841` ignores both validator arguments.
-- Change: port the idea (key on `{randomID, round}`, drop on ambiguity), not the diff. The data structures have diverged too far for line-level porting.
+- Change: port the idea (key on `{randomID, round}`, drop on ambiguity), not the diff. The data structures have diverged too far for line-level porting. Add `hl_consensus_heartbeat_ack_ambiguous_total`.
+- Test: fixture with two outgoing heartbeats sharing a random ID in different rounds and one ack each; expect two distinct delays keyed to the right validator. A second fixture with an ack matching both expects zero delays and the ambiguity counter at 1.
 
 ---
 
@@ -267,7 +275,7 @@ Keep `internal/peermon` and our metric names. Borrow upstream mechanics for tail
 ### 4.1 `round_advance_monitor.go` rewrite
 
 - Ours only. Three defects: fd leak on rotation (`fileReader = nil` without `Close` at `ours:internal/monitors/round_advance_monitor.go:69`), torn-line drop at lines 97-105, and `utils.GetLatestFile` inside the 10 ms loop at line 49.
-- Change: rewrite on `readCommittedLines` plus the Tier 2.1 resolver. Fold in 0.3.
+- Change: rewrite on `readCommittedLines` plus the Tier 2.1 resolver. Absorbs the 0.3 patch already landed in phase 1.
 
 ### 4.2 Startup replay of the current hour
 
@@ -316,7 +324,7 @@ Context: `up:HL_NODE_METRICS_AUDIT.md:323-347,409-421` argues `tcp_traffic` In/O
 
 ## Tier 5: new monitors
 
-All are absent from our tree. Ranked by operator value. Each needs its metrics redeclared in `ours:internal/metrics/instruments.go`; strip upstream's `RegisterSource`/`source_state` calls or stub them.
+All are absent from our tree. Ranked by operator value. Each needs its metrics redeclared in `ours:internal/metrics/instruments.go` under the upstream name; strip upstream's `RegisterSource`/`source_state` calls or stub them. Flag and gating policy per Decisions.
 
 | Rank | Monitor | Upstream file (LOC) | Reads | Key metrics | Notes |
 |---|---|---|---|---|---|
@@ -324,7 +332,7 @@ All are absent from our tree. Ranked by operator value. Each needs its metrics r
 | 2 | child_stderr | `child_stderr_monitor.go` (306) | `data/visor_child_stderr/` | `hl_node_child_crashes{reason}`, `hl_node_child_last_crash_seconds` | `app_hash_mismatch`, `config_error` taxonomy |
 | 3 | visor + node_state | `visor_monitor.go` (378), `node_state_monitor.go` (165) | `hyperliquid_data/visor_abci_state.json`, `freeze_abci_height`, `evm_db_hub_*/cp_checkpoint_height` | `hl_visor_height`, hardfork version, freeze height, fast/slow gap | Coupled pair |
 | 4 | disk | `disk_monitor.go` (295) + statfs/allocation stubs | statfs + allowlisted subdir walk every 120 s | free/used/allocated bytes | Tune subdir allowlist |
-| 5 | operator_config | `operator_config_monitor.go` (265) | `file_mod_time_tracker/`, `heartbeat_jailing_config.json` | `hl_node_jailing_threshold_seconds`, `hl_node_jailing_dry_run`, config ages | Headroom recipe in `up:CHANGELOG.md` v3.1.0 |
+| 5 | operator_config | `operator_config_monitor.go` (265) | `file_mod_time_tracker/`, `heartbeat_jailing_config.json` | `hl_node_jailing_threshold_seconds`, `hl_node_jailing_dry_run`, config ages | Validator only. Headroom recipe in `up:CHANGELOG.md` v3.1.0 |
 | 6 | crit_msg + crit_locations | `crit_msg_monitor.go` (263), `critical_generation.go` (84), `crit_locations_monitor.go` (287) | `data/crit_msg_stats/{hl-node,hl-visor}/<date>` | `hl_node_bugs_total`, `hl_node_crits_total`, top locations | Three-file coupling |
 | 7 | snapshot_status | `snapshot_status_monitor.go` (172) | `data/periodic_abci_state_statuses/` | snapshot age, last height | |
 | 8 | accumulator_consensus | `accumulator_consensus_monitor.go` (361) | per-bucket accumulator files | `hl_consensus_committed_*`, `hl_consensus_dropped_txs` | Validator only. Sum `delta`, not `n` (v3.1.0 fix) |
@@ -344,7 +352,6 @@ Deliver 1 to 5 first. 6 to 10 as time allows.
 - Upstream: `up:.github/workflows/ci.yaml`. Runs `go mod tidy -diff`, `go mod verify`, `go test` plain and `-race`, `go vet`, staticcheck, `go generate` drift check, govulncheck, actionlint, promtool check and test rules, amd64 and arm64 build matrix, SHA-pinned actions, `GOTOOLCHAIN: local`.
 - Ours: `ours:.github/workflows/ci-tests.yml` runs golangci-lint, a heavy `-race -v` test and a 16x flake run. No govulncheck, vet, arm64, or pinning.
 - Change: add govulncheck, `go mod tidy -diff`, arm64 build, SHA pins. Copy `up:.github/dependabot.yml` verbatim.
-- Also survey our other Go repos for CI improvements made since this repo's workflows were written, and port what applies. Candidates with Go and CI: `bcm-probe`, `dwellir-admin-dashboard` (has `schema-drift.yml`), `hyperliquid-archiver`, `hyperliquid-index`, `hyperliquid-l1-gateway`, `hyperliquid-rest-server`, `iris`. Diff each repo's `.github/workflows/` against ours and pick up shared steps (lint versions, caching, release packaging, drift checks).
 
 ### 6.2 Release
 
@@ -372,7 +379,7 @@ Deliver 1 to 5 first. 6 to 10 as time allows.
 
 ### 6.6 Dependencies
 
-Nothing to take. We are on Go 1.26.4, upstream on 1.25.13. Upstream is one point release ahead on `prometheus/client_golang` and `go.opentelemetry.io/otel`; dependabot (6.1) handles that.
+Nothing to take. We are on Go 1.26.7, upstream on 1.25.13. Upstream is one point release ahead on `prometheus/client_golang` and `go.opentelemetry.io/otel`; dependabot (6.1) handles that.
 
 ---
 
@@ -396,13 +403,13 @@ Seed the log table with `b150dcc` (v4.1.1, reviewed 2026-09-10).
 The hl-node log surface changes without notice (`current_stakes`, round-advance reason, gossip payloads, new action types, all within six months). Routine on each hl-node release:
 
 1. Pull one hour of each consumed stream from a mainnet and a testnet node: `status/hourly`, `consensus/hourly`, `replica_cmds`, `gossip_rpc`, `gossip_connections`, `tcp_traffic`, `evm_block_and_receipts`, `validator_latency`. Store as gitignored fixtures under `internal/monitors/testdata/live/`.
-2. Run parsers against them with a test that fails on any unknown event, action type, or decode error (Tier 4.4 counters and Tier 0.5 `actiontypes` give the hooks).
+2. Run parsers against them with a test that fails on any unknown event, action type, or decode error (Tier 4.4 counters and Tier 0.5 `actiontypes` give the hooks). The same test runs in CI against the committed trimmed samples in `testdata/schema/`; refresh those from the live pull when a shape changes.
 3. Watch upstream's `HL_NODE_METRICS_AUDIT.md` and `CHANGELOG.md` "accept current ... shape" commits as an early signal; they track hl-node changes closely.
 4. Add a `hl_exporter_parse_errors_total{stream,stage}` counter (Tier 4.7 envelope generalized) and an alert on it, so drift is visible in production, not only in review.
 
 ### 7.3 Docs hygiene
 
-- Keep `BREAKING_CHANGES.md` mapping our names to upstream v4 names for every metric we port under an upstream name.
+- Document every metric ported under an upstream name in the metrics doc with its upstream origin. `BREAKING_CHANGES.md` is only for renames of existing metrics, of which this plan has none.
 - Once 6.5 lands, retire the hand-written `docs/metrics-overview.md` in favor of the generated file.
 - Note in `README.md` that the fork is intentionally divergent and point to this plan and the routines.
 
@@ -415,20 +422,20 @@ Tier 0 to 3 (new): `internal/exporter/safego.go`, `internal/monitors/safego.go`,
 Tier 4 (modify): `internal/monitors/log_tail.go`, `gossip_monitor.go`, `gossip_connections_monitor.go`, `outbound_peers_monitor.go`, `parent_peer_monitor.go`, `parent_quality.go`, `internal/peermon/prober.go`, `internal/exporter/exporter.go`.
 Tier 5 (new): one file per monitor under `internal/monitors/`, instrument declarations in `internal/metrics/instruments.go`, wiring in `internal/exporter/exporter.go`, flags in `internal/config/config.go` and `cmd/hyperliquid-exporter/main.go`.
 Tier 6: `.github/workflows/ci-tests.yml`, `release.yml`, `.github/dependabot.yml` (new), `internal/metrics/prometheus.go`, `alerts/` (new), `internal/metrics/cmd/metricdocs/` (new), `docs/metrics.md` (generated).
-Tier 7 (new): `docs/routines/upstream-sync.md`, `docs/routines/hl-node-schema-watch.md`; modify `BREAKING_CHANGES.md`, `README.md`.
+Tier 7 (new): `docs/routines/upstream-sync.md`, `docs/routines/hl-node-schema-watch.md`, `internal/monitors/testdata/schema/`; modify `README.md`, `docs/metrics-overview.md`.
 
 ## Implementation Phases
 
-Each phase leaves the tree green and is one release.
+Each phase leaves the tree green and is one release. Version numbers are assigned at release prep; every phase is a minor bump under SemVer since each adds metrics or flags. Nothing in this plan has shipped; the Unreleased changelog section currently holds only the contracts removal.
 
 Phases intentionally cut across tiers. Tiers rank items by severity and category; phases group them by what can land together safely. Three rules drive the grouping: dependency order (the series sweep in 2.3 is only removed after validator reconciliation in 3.4 exists), shared code surface (the resolver in 2.1 and the tailing fixes in 4.1 to 4.3 touch the same files and ship together), and release size small enough to verify on a live node. Safego (1.1) leads phase 1 because it makes every later change non-fatal.
 
-1. **Safety and schema (2.4.0):** Tier 1.1, Tier 0 complete, 1.3, 1.4, 1.6, 3.6. All small; verify against a current mainnet node that `hl_consensus_validator_count`, timeout rounds and signer mapping are non-zero.
-2. **Perf and tailing (2.5.0):** 2.1, 2.2, 4.1, 4.2, 4.3, 4.7 child reset. Measure CPU before and after on a live node.
-3. **Metric correctness (2.6.0):** 3.1, 3.2, 3.5, 1.5, 3.4, then 2.3. Changelog must call out that operation counts drop 2 to 6x.
-4. **Peer quality (2.7.0):** 4.4, 4.5, 4.6, rest of 4.7, 1.8.
-5. **New monitors (2.8.0):** Tier 5 ranks 1 to 5. Charm gains any new flags.
-6. **Infra and routines (2.9.0):** Tier 6, Tier 7. 3.7, 3.8, 2.4 and Tier 5 ranks 6 to 10 as capacity allows.
+1. **Safety and schema:** 1.1, Tier 0 complete, 1.3, 1.4, 1.6, 3.6. All small; verify against a current mainnet node that `hl_consensus_validator_count`, timeout rounds and signer mapping are non-zero.
+2. **Perf and tailing:** 2.1, 2.2, 4.1, 4.2, 4.3, 4.7 child reset. Measure CPU before and after on a live node.
+3. **Metric correctness:** 3.1, 3.2, 3.5, 1.5, 3.4, then 2.3. Changelog must call out that operation counts drop 2 to 6x.
+4. **Peer quality:** 4.4, 4.5, 4.6, rest of 4.7, 1.8.
+5. **New monitors:** Tier 5 ranks 1 to 5, each behind its own flag per Decisions. Charm gains the new flags.
+6. **Infra and routines:** Tier 6, Tier 7. 3.7, 3.8, 2.4 and Tier 5 ranks 6 to 10 as capacity allows.
 
 ## Testing Decisions
 
@@ -440,7 +447,9 @@ Phases intentionally cut across tiers. Tiers rank items by severity and category
 ## Acceptance Criteria
 
 - On a current mainnet node: signer to validator mapping populated, `hl_timeout_rounds_total` increments, proposer counters carry `name`, one order counts as one operation.
-- A deliberate `panic` injected in any monitor increments `hl_exporter_monitor_panics_total` and does not exit the process.
+- A deliberate `panic` injected in any monitor increments `hl_exporter_monitor_panics_total` and does not exit the process (unit test on `runMonitor`).
+- Heartbeat fixtures in 3.8 pass: distinct delays for same-ID different-round heartbeats, ambiguous joins dropped and counted.
+- The schema-watch test in 7.2 runs green in CI against committed samples.
 - Exporter CPU on a live validator under 20% (upstream reported 195% before and single digits after their fix).
 - Restart does not increment `hl_p2p_*_total` counters by the replayed hour.
 - `make lint`, `make test RACE=1`, govulncheck clean.
@@ -448,6 +457,10 @@ Phases intentionally cut across tiers. Tiers rank items by severity and category
 
 ## Open Questions
 
-- Adopt `--binary-metrics` default-off (3.7) now, or keep version checks on by default until the charm exposes the flag?
-- Expose the new Tier 5 monitors under one `--extended-metrics` flag like upstream, or per-monitor flags?
-- Should `hl_node_parent_peer_*` gain an explicit `inferred` note in HELP text given upstream's causality argument (4.5)?
+- Should `hl_node_parent_peer_*` gain an explicit `inferred` note in HELP text given upstream's causality argument (4.5)? Leaning yes; decide when 4.5 lands.
+
+## Follow-ups
+
+Out of scope here, tracked so they are not lost:
+
+- Survey our other Go repos for CI improvements made since this repo's workflows were written: `bcm-probe`, `dwellir-admin-dashboard` (has `schema-drift.yml`), `hyperliquid-archiver`, `hyperliquid-index`, `hyperliquid-l1-gateway`, `hyperliquid-rest-server`, `iris`. Diff each `.github/workflows/` against ours and pick up shared steps. Separate plan; touches Tier 6.1 only.

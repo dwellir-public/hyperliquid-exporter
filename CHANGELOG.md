@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `hl_exporter_monitor_panics_total{monitor}`: every monitor goroutine now runs with panic recovery. A panic is logged with its stack and counted instead of killing the process
+- `hl_timeout_rounds_total` is now actually populated: the consensus log's `["round advance", ...]` events are parsed in the consensus monitor. The previous standalone round-advance monitor read the wrong stream and was never started. Both the legacy string reason and the current tagged-object reason (`{"Tc": {...}}`) are accepted; `suspect` carries hl-node's enum (e.g. `NoVote`)
+- `internal/actiontypes`: bounded action-type vocabulary ported from upstream v4.0.7, adding `outcomeDeploy` and `trailingStop`. Unknown action types are reported as `other` instead of becoming raw labels
+- EVM `block_type` gained a `small` bucket for 3M gas-limit blocks; unexpected gas limits no longer log a warning per block
+
+### Changed
+
+- Public IP lookup reads `$NODE_HOME/last_known_public_ip.json` first and falls back to ipify with a 5 s timeout. Failure logs a warning instead of aborting startup
+- A metrics port that cannot be bound now fails startup with a non-zero exit instead of leaving a metric-less process running
+- Validator latency files are keyed by UTC date, matching hl-node, instead of local time
+- Operation `category` labels follow the upstream mapping: `spotDeploy` moved from `transfer` to `deployment`, `perpDeploy` from `other` to `deployment`
+
+### Fixed
+
+- Status log `current_stakes` wrapped as `{"validator_to_stake": [...]}` (hl-node builds since mid-2026) is now decoded; previously the validator set and signer mappings silently came up empty on current nodes
+- Status log lines over 64 KiB no longer fail to read; the last-line scanner buffer is raised to 8 MiB
+- Consensus wrapper identity under the new `sender` key (hl-node builds since 2026-09) is accepted alongside the old `source` key, restoring heartbeat ack attribution
+- Validator latency reader resets its offset when the file is truncated or replaced in place, not only when the date changes
+
 ### Removed
 
 - `--contract-metrics`, `--contract-metrics-limit`, the `hl_evm_contract_tx_total` metric, and the `internal/contracts/` resolver. Contract names came from Hyperscan's Blockscout API, which no longer exists (the domain redirects to hl.eco and Blockscout retired free per-instance APIs on 2026-07-01), so the feature failed at startup for every user. `hl_evm_contract_create_total` is unaffected. Service args still passing the removed flags fail to parse, drop them before upgrading

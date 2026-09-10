@@ -14,6 +14,7 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 )
 
 // written by the version monitor, read by the update checker
@@ -25,7 +26,7 @@ func loadCommitHash() string {
 }
 
 func StartVersionMonitor(ctx context.Context, cfg config.Config, errCh chan<- error) {
-	go func() {
+	safego.Go("system", func() {
 		// run immediately on startup
 		if err := updateVersionInfo(ctx, cfg); err != nil {
 			errCh <- fmt.Errorf("version monitor error: %w", err)
@@ -44,7 +45,7 @@ func StartVersionMonitor(ctx context.Context, cfg config.Config, errCh chan<- er
 				}
 			}
 		}
-	}()
+	})
 }
 
 func updateVersionInfo(ctx context.Context, cfg config.Config) error {

@@ -13,6 +13,7 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 )
 
 const (
@@ -28,11 +29,17 @@ type ValidatorLatencyMonitor struct {
 	lastEMATime   time.Time
 }
 
-// filePos records how far a date-named latency file has been read;
-// the path resets the offset when the day rolls over
+// filePos records how far a date-named latency file has been read. The
+// offset resets when the day rolls over (path change), when the file was
+// rewritten in place (inode change) or truncated (size below offset).
 type filePos struct {
 	path string
 	pos  int64
+	info os.FileInfo
+}
+
+func (f filePos) resumable(path string, info os.FileInfo) bool {
+	return f.path == path && f.pos > 0 && f.info != nil && os.SameFile(f.info, info) && f.pos <= info.Size()
 }
 
 // latency entry
@@ -71,8 +78,8 @@ func StartValidatorLatencyMonitor(ctx context.Context, cfg *config.Config, errCh
 	logger.InfoComponent("latency", "Starting validator latency monitor")
 
 	// start monitoring goroutines
-	go m.monitorLatencies(ctx, errCh)
-	go m.monitorEMA(ctx, errCh)
+	safego.Go("latency", func() { m.monitorLatencies(ctx, errCh) })
+	safego.Go("latency", func() { m.monitorEMA(ctx, errCh) })
 }
 
 // monitors individual validator latency files
@@ -117,7 +124,7 @@ func (m *ValidatorLatencyMonitor) processLatencyFiles() error {
 		}
 
 		// process today's file
-		today := time.Now().Format("20060102")
+		today := time.Now().UTC().Format("20060102")
 		filePath := filepath.Join(m.latencyDir, validator, today)
 
 		if err := m.processValidatorLatencyFile(validator, filePath); err != nil {
@@ -141,10 +148,14 @@ func (m *ValidatorLatencyMonitor) processValidatorLatencyFile(validator, filePat
 	}
 	defer func() { _ = file.Close() }()
 
-	// get last processed position; a different path means the day rolled
-	// over to a fresh file, so start from the beginning
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	// resume only when it is provably the same, still-growing file
 	last, exists := m.lastProcessed[validator]
-	if exists && last.path == filePath && last.pos > 0 {
+	if exists && last.resumable(filePath, info) {
 		// seek to last position
 		if _, err := file.Seek(last.pos, 0); err != nil {
 			return fmt.Errorf("failed to seek: %w", err)
@@ -173,7 +184,7 @@ func (m *ValidatorLatencyMonitor) processValidatorLatencyFile(validator, filePat
 
 	// update last processed position
 	pos, _ := file.Seek(0, 1) // get current position
-	m.lastProcessed[validator] = filePos{path: filePath, pos: pos}
+	m.lastProcessed[validator] = filePos{path: filePath, pos: pos, info: info}
 
 	// update metrics with latest entry
 	if latestEntry != nil {
@@ -208,7 +219,7 @@ func (m *ValidatorLatencyMonitor) monitorEMA(ctx context.Context, errCh chan<- e
 
 // processes the exponential moving average file
 func (m *ValidatorLatencyMonitor) processEMAFile() error {
-	today := time.Now().Format("20060102")
+	today := time.Now().UTC().Format("20060102")
 	filePath := filepath.Join(m.emaDir, today)
 
 	file, err := os.Open(filePath)

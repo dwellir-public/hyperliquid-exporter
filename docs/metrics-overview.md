@@ -23,7 +23,7 @@ commit: 37891c7
 | `hl_core_rounds_processed` | Counter | - | Total consensus rounds processed | `--replica-metrics` |
 | `hl_core_tx_per_block` | Histogram | - | Distribution of transactions per block | `--replica-metrics` |
 | `hl_core_tx_total` | Counter | `type` | Total transactions/actions by type | `--replica-metrics` |
-| `hl_timeout_rounds_total` | Counter | `suspect` | Total number of timeout rounds | `--replica-metrics` |
+| `hl_timeout_rounds_total` | Counter | `suspect` | Consensus round advances by timeout certificate (Tc); `suspect` is hl-node's enum (e.g. `NoVote`) or `unknown` | Validator node |
 
 Metrics marked with `--replica-metrics` also require hl-node to be running with `--replica-cmds-style actions-and-responses`.
 
@@ -196,15 +196,21 @@ The above are available to all node types, while the below metrics require acces
 | `hl_consensus_monitor_lines_processed_total` | Counter | `monitor_type` | Total lines processed by consensus monitor | Validator node |
 | `hl_consensus_monitor_errors_total` | Counter | `monitor_type` | Total errors encountered by consensus monitor | Validator node |
 
+## Exporter Metrics
+
+| Metric | Type | Labels | Description | Requirements |
+|--------|------|--------|-------------|--------------|
+| `hl_exporter_monitor_panics_total` | Counter | `monitor` | Panics recovered in exporter monitor goroutines. Any non-zero value means a monitor stopped reporting until restart | - |
+
 ## Label Definitions
 
 ### Common Labels
 - `validator`: Validator address
 - `signer`: Signer address
 - `name`: Human-readable validator name
-- `type`: Transaction or operation type
+- `type`: Transaction or operation type. Action types outside the known hl-node vocabulary (`internal/actiontypes`) are reported as `other`
 - `category`: Operation category (for operations_total)
-- `block_type`: EVM block type (standard/high/other) - requires flag
+- `block_type`: EVM block type (small/standard/high/other) - requires flag
 
 
 ## Metric Requirements

@@ -9,6 +9,7 @@ import (
 	hyperliquidapi "github.com/validaoxyz/hyperliquid-exporter/internal/hyperliquid-api"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 )
 
 var hlResolver *hyperliquidapi.Resolver
@@ -17,7 +18,7 @@ func StartValidatorMonitor(ctx context.Context, cfg config.Config, errCh chan<- 
 	// init HL resolver
 	hlResolver = hyperliquidapi.NewResolver(cfg.Chain)
 
-	go func() {
+	safego.Go("consensus", func() {
 		// run immediately on startup to populate mappings
 		if err := updateValidatorMetrics(ctx, cfg); err != nil {
 			logger.Error("Initial validator monitor update error: %v", err)
@@ -38,7 +39,7 @@ func StartValidatorMonitor(ctx context.Context, cfg config.Config, errCh chan<- 
 				}
 			}
 		}
-	}()
+	})
 }
 
 func updateValidatorMetrics(ctx context.Context, cfg config.Config) error {

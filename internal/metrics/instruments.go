@@ -8,6 +8,9 @@ import (
 
 // metric instruments for hyperliquid-exporter
 var (
+	// exporter self-observability
+	HLExporterMonitorPanicsCounter api.Int64Counter
+
 	// counters consensus
 	HLConsensusProposerCounter api.Int64Counter
 	HLTimeoutRoundsCounter     api.Int64Counter
@@ -153,6 +156,14 @@ var (
 
 func createInstruments() error {
 	var err error
+
+	HLExporterMonitorPanicsCounter, err = meter.Int64Counter(
+		"hl_exporter_monitor_panics_total",
+		api.WithDescription("Panics recovered in exporter monitor goroutines"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create monitor panics counter: %w", err)
+	}
 
 	blockTimeBuckets := []float64{
 		10, 20, 30, 40, 50, 60, 70, 80, 90, 100,

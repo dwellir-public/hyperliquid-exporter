@@ -12,6 +12,7 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 )
 
 // monitors ABCI state files for EVM account count
@@ -30,7 +31,7 @@ func StartEVMAccountMonitor(ctx context.Context, cfg config.Config, errCh chan<-
 
 	var lastModTime time.Time
 
-	go func() {
+	safego.Go("evm", func() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 
@@ -66,7 +67,7 @@ func StartEVMAccountMonitor(ctx context.Context, cfg config.Config, errCh chan<-
 				lastModTime = info.ModTime()
 			}
 		}
-	}()
+	})
 }
 
 // falls back to periodic snapshots if live state is unavailable

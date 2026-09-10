@@ -9,9 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/validaoxyz/hyperliquid-exporter/internal/actiontypes"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/replica"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/utils"
 )
 
@@ -58,7 +60,7 @@ func NewReplicaMonitor(dataDir string, bufferSize int) *ReplicaMonitor {
 func (m *ReplicaMonitor) Start(ctx context.Context) error {
 	logger.InfoComponent("replica", "Starting streaming replica monitor, dataDir: %s", m.dataDir)
 
-	go m.streamLoop(ctx)
+	safego.Go("replica", func() { m.streamLoop(ctx) })
 	return nil
 }
 
@@ -255,7 +257,7 @@ func (m *ReplicaMonitor) processBlock(block *replica.BlockMetrics) {
 
 	// update operation counters (new)
 	for actionType, count := range block.OperationCounts {
-		category := getCategoryForAction(actionType)
+		category := actiontypes.Category(actionType)
 		metrics.IncCoreOperationsTotal(actionType, category, int64(count))
 	}
 
@@ -303,52 +305,4 @@ func (m *ReplicaMonitor) GetVerificationStats() ReplicaVerificationStats {
 	maps.Copy(statsCopy.ActionCounts, m.verificationStats.ActionCounts)
 
 	return statsCopy
-}
-
-// returns the category for a given action type
-func getCategoryForAction(actionType string) string {
-	switch actionType {
-	// trading operations
-	case replica.ActionTypeOrder, replica.ActionTypeTwapOrder,
-		replica.ActionTypeCancel, replica.ActionTypeCancelByCloid,
-		replica.ActionTypeBatchModify, replica.ActionTypeModify,
-		replica.ActionTypeScheduleCancel,
-		"liquidate", "twapCancel":
-		return "trading"
-
-	// transfer operations
-	case replica.ActionTypeUsdTransfer, replica.ActionTypeSpotSend,
-		"usdSend", "spotDeploy", "withdraw3", "spotUser",
-		"vaultTransfer", "vaultDistribute", "subAccountTransfer",
-		"subAccountSpotTransfer", "cDeposit", "cWithdraw":
-		return "transfer"
-
-	// settings/account operations
-	case replica.ActionTypeUpdateLeverage, replica.ActionTypeApproveAgent,
-		replica.ActionTypeSetReferrer, replica.ActionTypeApproveBuilderFee,
-		"createSubAccount", "subAccountModify", "registerReferrer",
-		"linkStakingUser", "setDisplayName", "createVault",
-		"vaultModify", "updateIsolatedMargin", "topUpIsolatedOnlyMargin",
-		"convertToMultiSigUser", "multiSig":
-		return "settings"
-
-	// governance/system operations
-	case replica.ActionTypeTokenDelegate, replica.ActionTypeVoteAppHash,
-		"VoteEthDepositAction", "VoteEthFinalizedWithdrawalAction",
-		"VoteGlobalAction", "SetGlobalAction", "CSignerAction",
-		"ValidatorSignWithdrawalAction", "NetChildVaultPositionsAction":
-		return "governance"
-
-	// rewards/claiming
-	case replica.ActionTypeClaimRewards, "reserveRequestWeight":
-		return "rewards"
-
-	// evm operations
-	case replica.ActionTypeEvmRawTx, replica.ActionTypeEvmUserModify,
-		"evmUserSpotTransfer", "finalizeEvmContract":
-		return "evm"
-
-	default:
-		return "other"
-	}
 }

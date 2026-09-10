@@ -17,6 +17,7 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/utils"
 )
 
@@ -142,10 +143,10 @@ func StartConsensusMonitor(ctx context.Context, cfg *config.Config, errCh chan<-
 	}
 
 	// start monitoring consensus logs
-	go m.monitorConsensusLogs(ctx, errCh)
+	safego.Go("consensus", func() { m.monitorConsensusLogs(ctx, errCh) })
 
 	// start monitoring status logs
-	go m.monitorStatusLogs(ctx, errCh)
+	safego.Go("consensus", func() { m.monitorStatusLogs(ctx, errCh) })
 }
 
 // monitors the consensus log files
@@ -306,14 +307,24 @@ func (m *ConsensusMonitor) processConsensusLine(line string) error {
 	// check message type using a minimal parse approach
 	msgData := innerParts[1]
 
+	if direction == "round advance" {
+		return processRoundAdvance(msgData)
+	}
+
 	// first check if this has a nested msg struct (for "in" messages)
+	// the sender identity key was renamed from "source" to "sender" in
+	// hl-node builds from 2026-09; accept either
 	var wrapper struct {
 		Source string          `json:"source"`
+		Sender string          `json:"sender"`
 		Msg    json.RawMessage `json:"msg"`
 	}
 
 	// try to unmarshal as wrapper first
 	if err := json.Unmarshal(msgData, &wrapper); err == nil && len(wrapper.Msg) > 0 {
+		if wrapper.Sender != "" {
+			wrapper.Source = wrapper.Sender
+		}
 		// use the inner msg for processing
 		msgData = wrapper.Msg
 	}

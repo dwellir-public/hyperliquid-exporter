@@ -16,6 +16,7 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/utils"
 )
 
@@ -48,7 +49,7 @@ func StartEVMMonitor(ctx context.Context, cfg config.Config, errCh chan<- error)
 	evmDataDir := filepath.Join(cfg.NodeHome, "data/evm_block_and_receipts/hourly")
 	logger.InfoComponent("evm", "Starting unified EVM monitoring in directory: %s", evmDataDir)
 
-	go func() {
+	safego.Go("evm", func() {
 		// check if directory exists
 		if _, err := os.Stat(evmDataDir); os.IsNotExist(err) {
 			logger.WarningComponent("evm", "EVM block and receipts directory does not exist: %s", evmDataDir)
@@ -130,7 +131,7 @@ func StartEVMMonitor(ctx context.Context, cfg config.Config, errCh chan<- error)
 				}
 			}
 		}
-	}()
+	})
 }
 
 func processEVMBlockAndReceiptsLine(line string) error {
@@ -255,13 +256,16 @@ func processBlockData(blockData any, isoTimestamp time.Time) (string, error) {
 			metrics.UpdateMaxGasLimit(gasLimit)
 
 			if blockTypeMetricsEnabled {
-				if gasLimit <= 5_000_000 {
+				switch {
+				case gasLimit == 3_000_000:
+					blockType = "small"
+				case gasLimit <= 5_000_000:
 					blockType = "standard"
-				} else if gasLimit >= 30_000_000 {
+				case gasLimit >= 30_000_000:
 					blockType = "high"
-				} else {
+				default:
 					blockType = "other"
-					logger.WarningComponent("evm", "Unexpected gas limit: %d", gasLimit)
+					logger.DebugComponent("evm", "Unexpected gas limit: %d", gasLimit)
 				}
 				logger.DebugComponent("evm", "Block %d: gasLimit=%d, blockType=%s", blockNumber, gasLimit, blockType)
 			}

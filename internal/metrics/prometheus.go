@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"time"
 
@@ -32,9 +33,16 @@ func StartPrometheusServer(ctx context.Context, port int) error {
 		Handler: mux,
 	}
 
+	// bind synchronously so a taken port fails startup instead of leaving a
+	// metric-less process running
+	ln, err := net.Listen("tcp", server.Addr)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", server.Addr, err)
+	}
+
 	go func() {
 		logger.Info("Starting Prometheus metrics server on port %d", port)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
 			logger.Error("Prometheus server error: %v", err)
 		}
 	}()

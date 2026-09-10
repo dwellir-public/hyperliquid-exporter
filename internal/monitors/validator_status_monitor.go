@@ -2,6 +2,7 @@ package monitors
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,16 +14,69 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/utils"
 )
 
 type StatusData struct {
 	Timestamp string `json:"0"`
 	Data      struct {
-		HomeValidator string  `json:"home_validator"`
-		Round         int64   `json:"round"`
-		CurrentStakes [][]any `json:"current_stakes"`
+		HomeValidator string        `json:"home_validator"`
+		Round         int64         `json:"round"`
+		CurrentStakes currentStakes `json:"current_stakes"`
 	} `json:"1"`
+}
+
+// currentStakes decodes the status stream's current_stakes field across
+// hl-node schema generations: a bare array of rows before mid-2026, and
+// {"validator_to_stake": [...]} since. Row shape also changed, from
+// [validator, signer] to [signer, stake]; callers type-check row[1].
+type currentStakes [][]any
+
+func (c *currentStakes) UnmarshalJSON(b []byte) error {
+	b = bytes.TrimSpace(b)
+	if len(b) == 0 || bytes.Equal(b, []byte("null")) {
+		*c = nil
+		return nil
+	}
+	if b[0] == '[' {
+		return json.Unmarshal(b, (*[][]any)(c))
+	}
+	var wrapped struct {
+		ValidatorToStake [][]any `json:"validator_to_stake"`
+	}
+	if err := json.Unmarshal(b, &wrapped); err != nil {
+		return fmt.Errorf("current_stakes: %w", err)
+	}
+	*c = wrapped.ValidatorToStake
+	return nil
+}
+
+// registerStakeRows records every row identity for truncated-address
+// expansion and returns the signer->validator pairs the legacy row shape
+// carries. Modern [signer, stake] rows yield no pairs; the API monitor
+// supplies those mappings instead.
+func registerStakeRows(rows currentStakes) map[string]string {
+	pairs := make(map[string]string)
+	for _, row := range rows {
+		if len(row) < 2 {
+			continue
+		}
+		identity, _ := row[0].(string)
+		if identity == "" {
+			continue
+		}
+		identity = strings.ToLower(identity)
+		metrics.RegisterFullAddress(identity)
+		signer, ok := row[1].(string)
+		if !ok || signer == "" {
+			continue
+		}
+		signer = strings.ToLower(signer)
+		pairs[signer] = identity
+		metrics.RegisterSignerMapping(signer, identity)
+	}
+	return pairs
 }
 
 // state tracking for reducing log spam
@@ -32,7 +86,7 @@ var (
 )
 
 func StartValidatorStatusMonitor(ctx context.Context, cfg config.Config, errCh chan<- error) {
-	go func() {
+	safego.Go("consensus", func() {
 		// initial status check to set up logging context
 		statusDir := filepath.Join(cfg.NodeHome, "data/node_logs/status/hourly")
 		if _, err := os.Stat(statusDir); os.IsNotExist(err) {
@@ -56,7 +110,7 @@ func StartValidatorStatusMonitor(ctx context.Context, cfg config.Config, errCh c
 				}
 			}
 		}
-	}()
+	})
 }
 
 func readValidatorStatus(nodeHome string) error {
@@ -121,9 +175,9 @@ func processValidatorStatusLine(line string) error {
 
 	// parse the second element (index 1) which contains the actual data
 	var data struct {
-		HomeValidator string  `json:"home_validator"`
-		Round         int64   `json:"round"`
-		CurrentStakes [][]any `json:"current_stakes"`
+		HomeValidator string        `json:"home_validator"`
+		Round         int64         `json:"round"`
+		CurrentStakes currentStakes `json:"current_stakes"`
 	}
 
 	if err := json.Unmarshal(rawData[1], &data); err != nil {
@@ -131,21 +185,7 @@ func processValidatorStatusLine(line string) error {
 	}
 
 	// first, build signer->validator mapping from current_stakes
-	signerToValidator := make(map[string]string)
-	for _, row := range data.CurrentStakes {
-		if len(row) < 2 {
-			continue
-		}
-		validatorAddr, _ := row[0].(string)
-		signerAddr, _ := row[1].(string)
-		if validatorAddr != "" && signerAddr != "" {
-			signerToValidator[strings.ToLower(signerAddr)] = strings.ToLower(validatorAddr)
-			metrics.RegisterSignerMapping(strings.ToLower(signerAddr), strings.ToLower(validatorAddr))
-
-			// register the full validator address for expansion
-			metrics.RegisterFullAddress(strings.ToLower(validatorAddr))
-		}
-	}
+	signerToValidator := registerStakeRows(data.CurrentStakes)
 
 	// now handle home_validator (which is actually the signer address)
 	if data.HomeValidator != "" {
@@ -215,6 +255,9 @@ func ReadLastLine(filePath string) (string, error) {
 
 	var lastLine string
 	scanner := bufio.NewScanner(file)
+	// status lines carry the whole validator set and regularly exceed
+	// bufio's default 64 KiB token limit
+	scanner.Buffer(make([]byte, 1<<20), 8<<20)
 	for scanner.Scan() {
 		lastLine = scanner.Text()
 	}
@@ -267,8 +310,8 @@ func GetValidatorStatus(nodeHome string) (string, bool) {
 	}
 
 	var data struct {
-		HomeValidator string  `json:"home_validator"`
-		CurrentStakes [][]any `json:"current_stakes"`
+		HomeValidator string        `json:"home_validator"`
+		CurrentStakes currentStakes `json:"current_stakes"`
 	}
 
 	if err := json.Unmarshal(rawData[1], &data); err != nil {
@@ -335,7 +378,7 @@ func PopulateSignerMappings(nodeHome string) error {
 	}
 
 	var data struct {
-		CurrentStakes [][]any `json:"current_stakes"`
+		CurrentStakes currentStakes `json:"current_stakes"`
 	}
 
 	if err := json.Unmarshal(rawData[1], &data); err != nil {
@@ -344,21 +387,7 @@ func PopulateSignerMappings(nodeHome string) error {
 	}
 
 	// populate all signer->validator mappings
-	count := 0
-	for _, row := range data.CurrentStakes {
-		if len(row) < 2 {
-			continue
-		}
-		validatorAddr, _ := row[0].(string)
-		signerAddr, _ := row[1].(string)
-		if validatorAddr != "" && signerAddr != "" {
-			metrics.RegisterSignerMapping(strings.ToLower(signerAddr), strings.ToLower(validatorAddr))
-
-			// register the full validator address for expansion
-			metrics.RegisterFullAddress(strings.ToLower(validatorAddr))
-			count++
-		}
-	}
+	count := len(registerStakeRows(data.CurrentStakes))
 
 	logger.InfoComponent("consensus", "Pre-populated %d signer->validator mappings from local status file", count)
 	return nil

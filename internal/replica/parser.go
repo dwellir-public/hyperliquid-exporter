@@ -9,6 +9,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/validaoxyz/hyperliquid-exporter/internal/actiontypes"
 )
 
 // parser handles parsing of replica_cmds files
@@ -171,10 +173,7 @@ func (p *Parser) parseActionBundles(bundlesJSON json.RawMessage, actionCounts, o
 
 		// process signed actions
 		for _, sa := range bundleData.SignedActions {
-			actionType := sa.Action.Type
-			if actionType == "" {
-				actionType = ActionTypeOther
-			}
+			actionType, _ := actiontypes.Normalize(sa.Action.Type)
 
 			actionCounts[actionType]++
 			*totalActions++

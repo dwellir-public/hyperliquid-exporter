@@ -246,3 +246,32 @@ func TestProcessEVMBlockAndReceiptsLine(t *testing.T) {
 		})
 	}
 }
+
+func TestProcessBlockData_SmallGas(t *testing.T) {
+	resetEVMGlobals(t)
+	orig := blockTypeMetricsEnabled
+	blockTypeMetricsEnabled = true
+	t.Cleanup(func() { blockTypeMetricsEnabled = orig })
+
+	block := map[string]any{
+		"block": map[string]any{
+			"Small": map[string]any{
+				"header": map[string]any{
+					"header": map[string]any{
+						"number":   "0xc9",
+						"gasLimit": "0x2dc6c0", // 3_000_000
+						"gasUsed":  "0x1e8480", // 2_000_000
+					},
+				},
+				"body": map[string]any{"transactions": []any{}},
+			},
+		},
+	}
+	blockType, err := processBlockData(block, time.Time{})
+	if err != nil {
+		t.Fatalf("processBlockData() error: %v", err)
+	}
+	if blockType != "small" {
+		t.Errorf("expected blockType 'small', got %q", blockType)
+	}
+}

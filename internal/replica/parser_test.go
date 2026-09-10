@@ -291,3 +291,23 @@ func TestResetClearsFields(t *testing.T) {
 		t.Error("SignedActionBundles not cleared")
 	}
 }
+
+func TestBundleNewActionTypes(t *testing.T) {
+	p := NewParser(1)
+	// upstream fixture testnet_new_action_types.constructed.jsonl (v4.0.7)
+	bundles := json.RawMessage(`[
+		["hash", {"signed_actions":[{"action":{"type":"outcomeDeploy"}},{"action":{"type":"trailingStop"}},{"action":{"type":"notARealAction"}}]}]
+	]`)
+
+	actionCounts := make(map[string]int)
+	operationCounts := make(map[string]int)
+	var totalActions, totalOps int
+	if err := p.parseActionBundles(bundles, actionCounts, operationCounts, &totalActions, &totalOps); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"outcomeDeploy", "trailingStop", ActionTypeOther} {
+		if actionCounts[want] != 1 {
+			t.Errorf("actionCounts[%s] = %d, want 1 (all: %v)", want, actionCounts[want], actionCounts)
+		}
+	}
+}

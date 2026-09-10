@@ -1503,3 +1503,12 @@ func AddParentPeerTrafficVolume(ip string, v float64) {
 	HLNodeParentPeerTrafficTotalCounter.Add(sharedCtx, v,
 		api.WithAttributes(attribute.String("peer_ip", ip)))
 }
+
+// IncMonitorPanic counts a recovered panic attributed to a monitor goroutine.
+func IncMonitorPanic(monitor string) {
+	if HLExporterMonitorPanicsCounter == nil {
+		return
+	}
+	HLExporterMonitorPanicsCounter.Add(context.Background(), 1,
+		api.WithAttributes(attribute.String("monitor", monitor)))
+}

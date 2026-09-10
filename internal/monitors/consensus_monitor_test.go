@@ -391,3 +391,17 @@ func TestFormatValidatorAddress(t *testing.T) {
 		}
 	}
 }
+
+func TestProcessConsensusLineSenderKey(t *testing.T) {
+	m := newTestConsensusMonitor(t)
+	out := `["2025-01-01T00:00:00.000000000", ["out", {"Heartbeat":{"validator":"0xabc","random_id":77}}]]`
+	if err := m.processConsensusLine(out); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"source", "sender"} {
+		line := `["2025-01-01T00:00:01.000000000", ["in", {"` + key + `":"0xpeer","msg":{"HeartbeatAck":{"random_id":77}}}]]`
+		if err := m.processConsensusLine(line); err != nil {
+			t.Errorf("%s key: %v", key, err)
+		}
+	}
+}

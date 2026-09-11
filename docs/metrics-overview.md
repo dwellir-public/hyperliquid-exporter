@@ -129,10 +129,11 @@ Requires `--peer-latency` flag. Infers the node's primary upstream peer from `tc
 | `hl_node_parent_peer_tenure_seconds` | Gauge | - | How long the current parent peer has held the role | `--peer-latency` |
 | `hl_node_parent_peer_switches_total` | Counter | - | Total number of parent peer changes | `--peer-latency` |
 | `hl_node_parent_peer_latency_ms` | Gauge | `peer_ip` | TCP connect latency to the parent peer in milliseconds | `--peer-latency` |
+| `hl_node_parent_peer_block_lag_seconds` | Gauge | `peer_ip` | EMA (alpha 0.2, ~10-20 blocks) of block apply lag: exporter wall clock at read minus chain block timestamp. Node state published under the current parent; carried across parent switches, so a new parent's series starts at the previous value. Above 30s accrues degraded time (see definition below) | `--peer-latency` |
 | `hl_node_parent_peer_share_ratio` | Gauge | - | Parent's smoothed inbound volume as a fraction of all smoothed inbound volume (1 = sole source) | `--peer-latency` |
 | `hl_node_parent_peer_challenger_ratio` | Gauge | - | Strongest non-parent peer's smoothed inbound volume divided by the parent's; above 1.2 triggers a switch | `--peer-latency` |
 | `hl_node_parent_peer_tenure_seconds_total` | Counter | `peer_ip` | Cumulative seconds each peer has served as parent | `--peer-latency` |
-| `hl_node_parent_peer_degraded_seconds_total` | Counter | `peer_ip` | Cumulative seconds of degraded block rate attributed to the parent at the time (see definition below) | `--peer-latency` |
+| `hl_node_parent_peer_degraded_seconds_total` | Counter | `peer_ip` | Cumulative seconds of degraded block rate or apply lag attributed to the parent at the time (see definition below) | `--peer-latency` |
 | `hl_node_parent_peer_blocks_total` | Counter | `peer_ip` | Blocks applied while each peer was parent | `--peer-latency` |
 | `hl_node_parent_peer_traffic_volume_total` | Counter | `peer_ip` | Cumulative inbound tcp_traffic volume delivered by each peer while parent (raw units) | `--peer-latency` |
 
@@ -140,7 +141,7 @@ Requires `--peer-latency` flag. Infers the node's primary upstream peer from `tc
 
 When the parent changes, the old peer's labeled metrics are removed and the switch counter is incremented. A warning is logged if the runner-up peer has >10% of the top peer's traffic volume, indicating potential ambiguity.
 
-**Degraded time definition (`hl_node_parent_peer_degraded_seconds_total`):** a peer's tenure is counted as degraded while the short-window block rate falls below 80% of the long-run baseline rate (rate-band detection: fast EMA of inter-block gaps vs. a slow EMA baseline), or while blocks stall outright (no block for longer than the greater of a floor and 4x the baseline gap). The rate-band verdict requires a warmup period (no degraded verdicts on a fresh baseline) so it does not misfire immediately after an exporter restart or parent switch. `1 - increase(hl_node_parent_peer_degraded_seconds_total[...]) / increase(hl_node_parent_peer_tenure_seconds_total[...])` gives the fraction of a peer's tenure the block rate kept up.
+**Degraded time definition (`hl_node_parent_peer_degraded_seconds_total`):** a peer's tenure is counted as degraded while the short-window block rate falls below 80% of the long-run baseline rate (rate-band detection: fast EMA of inter-block gaps vs. a slow EMA baseline), or while the apply lag EMA (`hl_node_parent_peer_block_lag_seconds`) exceeds 30s, or while blocks stall outright (no block for longer than the greater of a floor and 4x the baseline gap). The rate-band verdict requires a warmup period (no degraded verdicts on a fresh baseline) so it does not misfire immediately after an exporter restart; the lag verdict waits for 5 lag samples. The lag EMA is not reset on a parent switch, so a new parent inherits a lagging verdict until the EMA decays below 30s. `1 - increase(hl_node_parent_peer_degraded_seconds_total[...]) / increase(hl_node_parent_peer_tenure_seconds_total[...])` gives the fraction of a peer's tenure the block rate kept up.
 
 ## Software Version Metrics
 

@@ -72,7 +72,8 @@ Settled here so implementers do not re-derive them.
 - **Rescan gate value (2.1).** 2 s for call sites inside EOF loops (block, consensus, replica, evm, proposal, round_advance, validator_status). No gate for pollers that already sleep 30 s or more (gossip, validator_ip).
 - **0.3 before 4.1.** 0.3 is the hl-node schema break and ships in phase 1 as a two-line patch. 4.1 rewrites the same file but depends on the 2.1 resolver, so it stays in phase 2 and absorbs 0.3 there.
 - **Fixtures for schema watch (7.2).** Commit a trimmed sample (about 20 lines per stream) under `internal/monitors/testdata/schema/` so the drift test runs in CI. The full hour pulled by the routine stays gitignored under `testdata/live/` for local runs.
-- **Cross-repo CI survey** is out of scope for this plan. See Follow-ups.
+- **Cross-repo CI survey** was done in phase 6 against `iris` and `hyperliquid-l1-gateway` for 6.1 and 6.2. House practice, not upstream, sets the bar: adopt a CI step only if a sibling repo runs it or a phase in this plan needs it.
+- **Tier 6 scope (phase 6).** 6.1 lands as govulncheck plus workflow hygiene. 6.2 takes only what the sibling release workflows already do. 6.3 is deferred for later evaluation. 6.4 is dropped: alert rules are managed centrally, not in this repo. 6.5 is dropped: a generated metrics doc plus drift test is more machinery than this tool warrants; `docs/metrics-overview.md` stays hand-maintained.
 
 ---
 
@@ -355,30 +356,35 @@ Deliver 1 to 5 first. 6 to 10 as time allows.
 - Upstream: `up:.github/workflows/ci.yaml`. Runs `go mod tidy -diff`, `go mod verify`, `go test` plain and `-race`, `go vet`, staticcheck, `go generate` drift check, govulncheck, actionlint, promtool check and test rules, amd64 and arm64 build matrix, SHA-pinned actions, `GOTOOLCHAIN: local`.
 - Ours: `ours:.github/workflows/ci-tests.yml` runs golangci-lint, a heavy `-race -v` test and a 16x flake run. No govulncheck, vet, arm64, or pinning.
 - Change: add govulncheck, `go mod tidy -diff`, arm64 build, SHA pins. Copy `up:.github/dependabot.yml` verbatim.
+- Done in phase 6 as: govulncheck job (pinned `v1.7.0`, as in `iris`), read-only `permissions`, PR `concurrency` with cancel-in-progress, `timeout-minutes` on every job, `go-version-file: go.mod` instead of a duplicated env, `actions/checkout@v7` and `actions/setup-go@v7`, `-v` dropped from the heavy test run. Rejected: `go mod tidy -diff` (`-mod=readonly` already fails on a stale go.sum), `go vet` and staticcheck (golangci-lint covers them), arm64 build (we ship no arm64 binary), SHA-pinned actions and dependabot (no sibling repo does either, and pins rot without dependabot), actionlint, `GOTOOLCHAIN: local`.
 
 ### 6.2 Release
 
 - Upstream: `up:.github/workflows/release.yaml`, `4dc9637`. Stamps `-ldflags -X ...metrics.BuildVersion/BuildCommit` from tag and SHA, publishes amd64 and arm64 binaries, `.tar.gz`, `SHA256SUMS`.
 - Ours: `ours:.github/workflows/release.yml`, manual dispatch with a VERSION-file gate. We already stamp via Makefile ldflags.
 - Change: add arm64 and checksums.
+- Revised in phase 6: no arm64, no checksums; no sibling repo ships either. Take from `iris/.github/workflows/release.yml` only: govulncheck job gating `release`, `permissions: contents: read` at workflow level with `contents: write` scoped to the `release` job, a main-only ref guard in `initialize`, `concurrency: release` without cancel, `actions/*@v7` and `go-version-file`, and a post-build smoke test on `--version`. Not taken: the rerun-safe tag reconciliation via the REST refs API and the same-commit rerun allowances in `version-bump-check`; they solve a failure mode this repo has not hit.
 
 ### 6.3 Exporter self-observability
 
 - Upstream: `up:internal/metrics/prometheus.go` (107 lines), `c7a8ca4`, `28660ea`. `hl_exporter_build_info{version,commit,go_version}`, `hl_exporter_config_info{chain}`, `/livez`, `/readyz`, `promhttp.HandlerFor` with `MaxRequestsInFlight`, `ReadHeaderTimeout`/`WriteTimeout`/`IdleTimeout`, `--pprof` on the metrics listener.
 - Ours: `ours:internal/metrics/prometheus.go` (50 lines): `/metrics` with `TimeoutHandler`, static `/health`. Version, commit and build time exist in `cmd/hyperliquid-exporter/main.go` but are never exported.
 - Change: export build info, add server timeouts and in-flight bound, add `--pprof`, add `/livez` and `/readyz` backed by the Tier 1.1 monitor registry.
+- Deferred in phase 6. Revisit when an operator asks for readiness probing or when a scrape-path incident needs build info or pprof. Server timeouts are the one piece cheap enough to land opportunistically.
 
 ### 6.4 Alerts
 
 - Upstream: `up:alerts/*.rules.yml` (6 files) with promtool tests in `up:alerts/tests/` and `up:alerts/rules_test.go`.
 - Only `HyperliquidCoreHeightStalled` and `HyperliquidCoreHeightSlow` (in `up:alerts/hyperliquid-core.rules.yml`) work against our names today. Process-down rules become usable after Tier 5.1.
 - Change: create `alerts/` with those two rules plus a promtool test step in CI. Add rules as monitors land.
+- Dropped in phase 6. Alert rules are managed centrally outside this repo. The two upstream rules and the `hl_node_process_up` rule are inputs for that central config, not for this tree.
 
 ### 6.5 Generated metric docs
 
 - Upstream: `up:internal/metrics/inventory_generate.go` (go:generate), `up:internal/metrics/cmd/metricdocs/main.go` (137), `up:internal/metrics/metricinventory/inventory.go` (395, AST-parses instrument declarations), producing `up:docs/metrics.md`. Drift tests: `inventory_test.go`, `promlint_test.go`.
 - Ours: hand-written `ours:docs/metrics-overview.md`.
 - Change: port the generator, adapted to our OTel declaration style in `instruments.go`. Add the drift test to CI. This is also a Tier 7 input.
+- Dropped in phase 6. `docs/metrics-overview.md` stays hand-maintained; every metric or label change updates it (Handoff convention).
 
 ### 6.6 Dependencies
 
@@ -408,12 +414,12 @@ The hl-node log surface changes without notice (`current_stakes`, round-advance 
 1. Pull one hour of each consumed stream from a mainnet and a testnet node: `status/hourly`, `consensus/hourly`, `replica_cmds`, `gossip_rpc`, `gossip_connections`, `tcp_traffic`, `evm_block_and_receipts`, `validator_latency`. Store as gitignored fixtures under `internal/monitors/testdata/live/`.
 2. Run parsers against them with a test that fails on any unknown event, action type, or decode error (Tier 4.4 counters and Tier 0.5 `actiontypes` give the hooks). The same test runs in CI against the committed trimmed samples in `testdata/schema/`; refresh those from the live pull when a shape changes.
 3. Watch upstream's `HL_NODE_METRICS_AUDIT.md` and `CHANGELOG.md` "accept current ... shape" commits as an early signal; they track hl-node changes closely.
-4. Add a `hl_exporter_parse_errors_total{stream,stage}` counter (Tier 4.7 envelope generalized) and an alert on it, so drift is visible in production, not only in review.
+4. `hl_exporter_parse_errors_total{stream,stage}` (Tier 4.7 envelope generalized) exists since phase 4; the alert on it lives in the central alert config, not here.
 
 ### 7.3 Docs hygiene
 
 - Document every metric ported under an upstream name in the metrics doc with its upstream origin. `BREAKING_CHANGES.md` is only for renames of existing metrics, of which this plan has none.
-- Once 6.5 lands, retire the hand-written `docs/metrics-overview.md` in favor of the generated file.
+- `docs/metrics-overview.md` stays hand-written (6.5 dropped).
 - Note in `README.md` that the fork is intentionally divergent and point to this plan and the routines.
 
 ---
@@ -424,7 +430,7 @@ Tier 0 to 3 (modify): `internal/monitors/validator_status_monitor.go`, `round_ad
 Tier 0 to 3 (new): `internal/exporter/safego.go`, `internal/monitors/safego.go`, `internal/actiontypes/actiontypes.go`, `internal/monitors/testdata/testnet_new_action_types.constructed.jsonl`.
 Tier 4 (modify): `internal/monitors/log_tail.go`, `gossip_monitor.go`, `gossip_connections_monitor.go`, `outbound_peers_monitor.go`, `parent_peer_monitor.go`, `parent_quality.go`, `internal/peermon/prober.go`, `internal/exporter/exporter.go`.
 Tier 5 (new): one file per monitor under `internal/monitors/`, instrument declarations in `internal/metrics/instruments.go`, wiring in `internal/exporter/exporter.go`, flags in `internal/config/config.go` and `cmd/hyperliquid-exporter/main.go`.
-Tier 6: `.github/workflows/ci-tests.yml`, `release.yml`, `.github/dependabot.yml` (new), `internal/metrics/prometheus.go`, `alerts/` (new), `internal/metrics/cmd/metricdocs/` (new), `docs/metrics.md` (generated).
+Tier 6: `.github/workflows/ci-tests.yml`, `release.yml`.
 Tier 7 (new): `docs/routines/upstream-sync.md`, `docs/routines/hl-node-schema-watch.md`, `internal/monitors/testdata/schema/`; modify `README.md`, `docs/metrics-overview.md`.
 
 ## Implementation Phases
@@ -438,7 +444,7 @@ Phases intentionally cut across tiers. Tiers rank items by severity and category
 3. **Metric correctness (done, `42b119e`):** 3.1, 3.2, 3.5, 1.5, 3.4, then 2.3. Not verified on a live node.
 4. **Peer quality (done, `28c558d`):** 4.4, 4.5, 4.6, rest of 4.7, 1.8. Not verified on a live node.
 5. **New monitors (done, `6911bde`):** Tier 5 ranks 1 to 5 as six monitors (visor and node_state each got a flag). Charm flags are a follow-up. Not verified on a live node.
-6. **Infra and routines:** Tier 6, Tier 7. 3.7, 3.8, 2.4 and Tier 5 ranks 6 to 10 as capacity allows.
+6. **Infra and routines (in progress):** 6.1 done, 6.2 narrowed, 6.3 deferred, 6.4 and 6.5 dropped (see Decisions). Tier 7. 3.7, 3.8, 2.4 and Tier 5 ranks 6 to 10 as capacity allows.
 
 ## Handoff
 
@@ -463,10 +469,9 @@ Read this before starting phase 6. Everything above the phase list is still the 
 
 **Phase 6 pointers (infra and routines).**
 
-- 6.1 CI: our workflow is `.github/workflows/ci-tests.yml`. Add govulncheck, `go mod tidy -diff`, arm64 build, SHA-pinned actions; copy `up:.github/dependabot.yml`.
-- 6.3 self-observability: `internal/metrics/prometheus.go` serves `/metrics` and a static `/health`. Build info lives in `cmd/hyperliquid-exporter/main.go` (`printBuildInfo`). `/readyz` can key off `hl_exporter_source_up`.
-- 6.4 alerts: start with `HyperliquidCoreHeightStalled` and `HyperliquidCoreHeightSlow` from `up:alerts/hyperliquid-core.rules.yml`; upstream's process-down rule (`hl_node_process_up`) now applies unchanged.
-- 6.5 generated docs: the generator must understand both the verbose `meter.X(...)` declarations in `instruments.go` and the `gauge(name, desc)` closure style in `node_instruments.go`.
+- 6.1 CI: done, see the 6.1 section for what was taken and rejected.
+- 6.2 release: `iris/.github/workflows/release.yml` is the reference; the 6.2 section lists exactly which pieces to take.
+- 6.3 self-observability (deferred): `internal/metrics/prometheus.go` serves `/metrics` and a static `/health`. Build info lives in `cmd/hyperliquid-exporter/main.go` (`printBuildInfo`). `/readyz` can key off `hl_exporter_source_up`.
 - 7.2 schema watch: `hl_exporter_parse_errors_total` exists; the block, consensus, replica, EVM and status parsers still need to count into it before the drift test is meaningful.
 - Leftovers as capacity allows: 3.7 (`--binary-metrics`, default off), 3.8 heartbeat ack correlation, 2.4 consensus lock batching, Tier 5 ranks 6 to 10.
 
@@ -485,6 +490,7 @@ Read this before starting phase 6. Everything above the phase list is still the 
 - A deliberate `panic` injected in any monitor increments `hl_exporter_monitor_panics_total` and does not exit the process (unit test on `runMonitor`).
 - Heartbeat fixtures in 3.8 pass: distinct delays for same-ID different-round heartbeats, ambiguous joins dropped and counted.
 - The schema-watch test in 7.2 runs green in CI against committed samples.
+- CI runs govulncheck; `alerts/` and generated metric docs are intentionally absent.
 - Exporter CPU on a live validator under 20% (upstream reported 195% before and single digits after their fix).
 - Restart does not increment `hl_p2p_*_total` counters by the replayed hour.
 - `make lint`, `make test RACE=1`, govulncheck clean.

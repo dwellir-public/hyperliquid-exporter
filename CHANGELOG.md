@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The peer prober tries the port observed in `tcp_traffic` before the fallback list when a peer has no probe-proven port yet
 - Per-`peer_ip` gossip series (`hl_p2p_incoming_requests_total`, `hl_p2p_incoming_peer_last_seen`, `hl_p2p_child_peer_connected`, `hl_p2p_child_peer_connections`, `hl_p2p_stream_connections_total`, `hl_p2p_verifications_total`) are published only with `--peer-latency`. Without the flag they created unbounded label cardinality with no consumer; aggregate gauges are unaffected
 - Public IP lookup reads `$NODE_HOME/last_known_public_ip.json` first and falls back to ipify with a 5 s timeout. Failure logs a warning instead of aborting startup
+- CI and release workflows run govulncheck, use a read-only token outside the release job, refuse to release from any ref other than `main`, queue concurrent releases, smoke-test the built binary's `--version`, and read the Go version from `go.mod`
 - A metrics port that cannot be bound now fails startup with a non-zero exit instead of leaving a metric-less process running
 - Validator latency files are keyed by UTC date, matching hl-node, instead of local time
 - Operation `category` labels follow the upstream mapping: `spotDeploy` moved from `transfer` to `deployment`, `perpDeploy` from `other` to `deployment`

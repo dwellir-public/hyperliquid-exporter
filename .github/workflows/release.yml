@@ -10,22 +10,38 @@ on:
         default: false
         type: boolean
 
+# Releases queue rather than cancel: a half-run release can leave a pushed tag
+# with no published release behind it.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+# Only the release job writes to the repo; every test, lint and changelog job
+# (and the third-party actions inside them) runs with a read-only token.
 permissions:
-  contents: write
-  pull-requests: read
+  contents: read
 
 env:
-  GO_VERSION: 1.26.7
   GOLANGCI_LINT_VERSION: v2.13.2
+  GOVULNCHECK_VERSION: v1.7.0
 
 jobs:
   initialize:
     name: "Initialize workflow"
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
     outputs:
       version: ${{ steps.get.outputs.version }}
     steps:
-      - uses: actions/checkout@v6
+      # The workflow token can write to the repo, so refuse to build, tag and
+      # publish code from any ref other than main.
+      - name: Guard release ref
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Releases must be dispatched from main (got ${{ github.ref }})"
+          exit 1
+
+      - uses: actions/checkout@v7
       - id: get
         run: |
           raw=$(cat VERSION)
@@ -35,8 +51,9 @@ jobs:
     name: "Verify correctly tagged version (${{ needs.initialize.outputs.version }})"
     needs: [initialize]
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -79,15 +96,16 @@ jobs:
   test-heavy:
     name: Test heavy
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 45
     needs: [version-bump-check]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
 
       - name: Run heavy tests (1x -race -heavy -shuffle)
         shell: bash
@@ -96,15 +114,16 @@ jobs:
   test-light:
     name: Test light
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 30
     needs: [version-bump-check]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
 
       - name: Run light tests (1x -race -shuffle)
         shell: bash
@@ -113,15 +132,16 @@ jobs:
   test-flaky:
     name: Test flaky
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 45
     needs: [version-bump-check]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
 
       - name: Run repeated tests (16x -shuffle)
         shell: bash
@@ -130,15 +150,16 @@ jobs:
   lint:
     name: Lint
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 15
     needs: [version-bump-check]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
@@ -146,16 +167,35 @@ jobs:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
           args: -v --build-tags="heavy"
 
+  govulncheck:
+    name: Vulnerability scan
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 15
+    needs: [version-bump-check]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - run: go install golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }}
+      - run: govulncheck ./...
+
   release:
     name: "Build, tag & release (${{ needs.initialize.outputs.version }})"
-    needs: [version-bump-check, initialize, test-heavy, test-light, test-flaky, lint]
+    needs: [version-bump-check, initialize, test-heavy, test-light, test-flaky, lint, govulncheck]
     runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: read
     outputs:
       tag:           ${{ steps.compute_tag.outputs.tag }}
       version:       ${{ steps.compute_tag.outputs.version }}
       is_prerelease: ${{ steps.compute_tag.outputs.is_prerelease }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -220,9 +260,9 @@ jobs:
 
           echo "Computed tag: $TAG (prerelease=$IS_PRE)"
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
 
       - name: Build
         shell: bash
@@ -233,6 +273,17 @@ jobs:
         run: |
           mv ./bin/hyperliquid-exporter ./bin/hyperliquid-exporter-${{ steps.compute_tag.outputs.tag }}
           ls -lh ./bin/
+
+      - name: Smoke test artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN="./bin/hyperliquid-exporter-${{ steps.compute_tag.outputs.tag }}"
+          LABEL="${{ steps.compute_tag.outputs.version_label }}"
+
+          # Exit status alone proves nothing; assert on the injected version.
+          "$BIN" --version | tee /tmp/version.txt
+          grep -qF "version $LABEL " /tmp/version.txt
 
       - name: Create Git tag
         shell: bash
@@ -299,7 +350,8 @@ jobs:
   summary:
     name: Release summary
     runs-on: blacksmith-2vcpu-ubuntu-2404
-    needs: [initialize, version-bump-check, test-heavy, test-light, test-flaky, lint, release]
+    timeout-minutes: 5
+    needs: [initialize, version-bump-check, test-heavy, test-light, test-flaky, lint, govulncheck, release]
     if: ${{ always() }}  # ensure this job runs even if dependencies failed
     steps:
       - name: Write release summary
@@ -314,6 +366,7 @@ jobs:
             echo "- Tests (light):     ${{ needs['test-light'].result }}"
             echo "- Tests (flaky):     ${{ needs['test-flaky'].result }}"
             echo "- Lint:              ${{ needs.lint.result }}"
+            echo "- Vuln scan:         ${{ needs.govulncheck.result }}"
             echo "- Release:           ${{ needs.release.result }}"
             echo ""
             # Only print release details/links if the release job succeeded and produced outputs

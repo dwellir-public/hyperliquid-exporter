@@ -5,7 +5,7 @@ COMMIT  := $(shell git rev-parse --short HEAD)
 VERSION := $(shell cat VERSION)
 VERSION_LABEL ?= $(VERSION)
 
-.PHONY: build clean explain
+.PHONY: build clean explain fmt lint test
 
 .DEFAULT_GOAL := explain
 
@@ -13,7 +13,7 @@ explain:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Options for test targets:"
-	@echo "  [N=...]              - Number of times to run burst tests (default 1)"
+	@echo "  [N=...]              - Number of test runs, passed as -count (default 1)"
 	@echo "  [RACE=1]             - Run tests with race detector"
 	@echo "  [VERSION_LABEL=...]  - Override version label"
 	@echo "  [V=1]                - Add V=1 for verbose output"
@@ -26,7 +26,7 @@ explain:
 	@echo "  test             - Run unit tests (RACE=1 for race detector)."
 	@echo "  explain          - Display this help message."
 
-# Number of times to run burst tests, default 1
+# Number of test runs (-count), default 1
 N ?= 1
 
 TEST_FLAGS :=
@@ -51,8 +51,8 @@ fmt:
 
 lint:
 	@echo "==> Running golangci-lint..."
-	@golangci-lint run --build-tags="heavy"
+	@golangci-lint run
 
 test:
 	@echo "==> Running tests..."
-	@$(TEST_ENV) go test -shuffle=on -count=$(N) -tags=$(TAGS) $(TEST_FLAGS) ./...
+	@go test -shuffle=on -count=$(N) $(TEST_FLAGS) ./...

@@ -7,9 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 make build                # → bin/hyperliquid-exporter (embeds version, commit, build time via ldflags)
 make test                 # go test -shuffle=on ./...
-make test RACE=1          # with race detector
+make test RACE=1          # with race detector (CI race job)
+make test N=16            # run 16 times (CI flaky job)
 make test V=1 N=3         # verbose, run 3 times
-make lint                 # golangci-lint (--build-tags="heavy")
+make lint                 # golangci-lint
 make fmt                  # gofmt -s -w .
 make clean                # remove bin/
 

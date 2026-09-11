@@ -44,9 +44,39 @@ type Peer struct {
 }
 
 // validPeerIP is the single admission predicate for every path that adds a
-// peer (Register, MarkParent, Load): a bare IPv4 or IPv6 address.
+// peer (Register, MarkParent, Load): a bare, routable IPv4 or IPv6 address
+// that is not one of this host's own. hl-node's tcp_traffic lists loopback
+// and the node's own interfaces with real byte rates, so without this the
+// exporter would probe itself.
 func validPeerIP(ip string) bool {
-	return net.ParseIP(ip) != nil
+	addr := net.ParseIP(ip)
+	if addr == nil || addr.IsLoopback() || addr.IsUnspecified() || addr.IsMulticast() || addr.IsLinkLocalUnicast() {
+		return false
+	}
+	return !localAddrs()[addr.String()]
+}
+
+var (
+	localOnce sync.Once
+	localSet  map[string]bool
+)
+
+// localAddrs returns the set of addresses bound to this host's interfaces,
+// resolved once; the exporter's interfaces do not change at runtime.
+func localAddrs() map[string]bool {
+	localOnce.Do(func() {
+		localSet = map[string]bool{}
+		addrs, err := net.InterfaceAddrs()
+		if err != nil {
+			return
+		}
+		for _, a := range addrs {
+			if n, ok := a.(*net.IPNet); ok {
+				localSet[n.IP.String()] = true
+			}
+		}
+	})
+	return localSet
 }
 
 // PeerSet is a thread-safe, bounded set of peers with JSON persistence.

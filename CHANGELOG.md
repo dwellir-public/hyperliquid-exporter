@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The metrics listener sets `ReadHeaderTimeout` (5 s), `WriteTimeout` (35 s) and `IdleTimeout` (60 s) and serves at most 5 scrapes at once; further scrapes get 503. Previously a slow or stalled client could hold a connection open indefinitely
 - `hl_software_version` re-runs `hl-node --version` only when the binary's mtime changes instead of copying and executing it every 30 minutes. The version monitor stays on by default; it reads only the local binary. `BINARY_HOME` is now carried in the config (it was parsed but dropped)
 - Block, consensus, status, replica, EVM and proposal log tailers share one implementation that keeps a torn trailing line until its newline arrives and drains the previous hour file before switching. Previously each tailer discarded the partial line it had already consumed at EOF, losing one record per file boundary, and dropped any line written to the old file after the rollover check
 - Latest-file resolution no longer walks whole log trees. `utils.LatestFile` descends into the greatest-named entry at each level (`os.ReadDir`), and tailers in EOF loops re-resolve at most every 2 s. Upstream measured about 195% CPU from the previous `filepath.Walk` in 10 ms loops
@@ -56,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Peer admission rejects loopback, unspecified, multicast and link-local addresses and this host's own interface addresses. hl-node's `tcp_traffic` lists `127.0.0.1` and the node's own IP with real byte rates, so the exporter registered and probed itself
+- `hl_evm_last_high_gas_block_time` reported the Go zero time (-62135596800) because hl-node's zoneless line timestamp failed the RFC3339 parse; the EVM tailer now uses the shared visor time parser
 - `hl_core_operations_total` counted every comma inside an order, cancel or modify object as a separate operation, inflating counts 2 to 6x. Elements are now counted with a JSON decoder; one order is one operation. Expect the counter's rate to drop accordingly after upgrading
 - `hl_consensus_proposer_count_total` now carries the `name` label. The moniker lookup was stubbed to return an empty string
 - Status log `current_stakes` wrapped as `{"validator_to_stake": [...]}` (hl-node builds since mid-2026) is now decoded; previously the validator set and signer mappings silently came up empty on current nodes

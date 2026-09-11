@@ -3,6 +3,8 @@ package monitors
 import (
 	"testing"
 	"time"
+
+	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
 )
 
 func resetEVMGlobals(t *testing.T) {
@@ -83,6 +85,25 @@ func TestProcessBlockData_HighGas(t *testing.T) {
 	}
 	if blockType != "high" {
 		t.Errorf("expected blockType 'high', got %q", blockType)
+	}
+}
+
+func TestProcessEVMLine_ZonelessTimestampSetsHighGasTime(t *testing.T) {
+	resetEVMGlobals(t)
+
+	// hl-node writes the line timestamp without a zone suffix
+	line := `["2026-09-11T08:59:02.559513359",{"block":{"High":{"header":{"header":{"number":"0xc8","gasLimit":"0x1c9c380","gasUsed":"0xe4e1c0"}},"body":{"transactions":[]}}}}]`
+	if err := processEVMBlockAndReceiptsLine(line); err != nil {
+		t.Fatalf("processEVMBlockAndReceiptsLine() error: %v", err)
+	}
+
+	got, ok := metrics.Int64GaugeValue(metrics.HLEVMLastHighGasBlockTime)
+	if !ok {
+		t.Fatal("hl_evm_last_high_gas_block_time not set")
+	}
+	want := time.Date(2026, 9, 11, 8, 59, 2, 559513359, time.UTC).Unix()
+	if got != want {
+		t.Errorf("hl_evm_last_high_gas_block_time = %d, want %d", got, want)
 	}
 }
 

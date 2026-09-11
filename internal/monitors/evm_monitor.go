@@ -71,11 +71,11 @@ func processEVMBlockAndReceiptsLine(line string) error {
 		return fmt.Errorf("invalid timestamp format: expected string, got %T", data[0])
 	}
 
-	timestamp, err := time.Parse(time.RFC3339Nano, timestampStr)
-	if err != nil {
-		// fallback to parsing from block data if ISO timestamp fails
-		logger.Debug("failed to parse ISO timestamp, will extract from block: %v", err)
-		timestamp = time.Time{}
+	// hl-node writes the timestamp without a zone; parseVisorTime accepts
+	// both that and RFC3339. A zero time falls back to the block header.
+	timestamp, ok := parseVisorTime(timestampStr)
+	if !ok {
+		logger.Debug("failed to parse ISO timestamp %q, will extract from block", timestampStr)
 	}
 
 	blockData := data[1]

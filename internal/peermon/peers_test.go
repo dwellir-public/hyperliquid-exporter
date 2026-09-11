@@ -25,7 +25,7 @@ func TestPeerSet_Register(t *testing.T) {
 func TestPeerSet_RegisterRejectsInvalidIP(t *testing.T) {
 	ps := NewPeerSet(t.TempDir())
 
-	for _, bad := range []string{"", "not-an-ip", "10.0.0.1:4000", "10.0.0.1:port", "abc:def"} {
+	for _, bad := range []string{"", "not-an-ip", "10.0.0.1:4000", "10.0.0.1:port", "abc:def", "127.0.0.1", "::1", "0.0.0.0", "169.254.1.1", "224.0.0.1"} {
 		_, evicted := ps.Register(bad, Outbound)
 		assert.False(t, evicted, "should not evict for invalid IP %q", bad)
 	}
@@ -33,8 +33,16 @@ func TestPeerSet_RegisterRejectsInvalidIP(t *testing.T) {
 
 	// Valid IPs should still work
 	_, _ = ps.Register("10.0.0.1", Outbound)
-	_, _ = ps.Register("::1", Outbound)
+	_, _ = ps.Register("2001:db8::1", Outbound)
 	assert.Equal(t, 2, ps.Len())
+}
+
+func TestPeerSet_RegisterRejectsOwnAddresses(t *testing.T) {
+	ps := NewPeerSet(t.TempDir())
+	for ip := range localAddrs() {
+		_, _ = ps.Register(ip, Outbound)
+	}
+	assert.Equal(t, 0, ps.Len())
 }
 
 func TestPeerSet_RegisterUpdatesLastSeen(t *testing.T) {

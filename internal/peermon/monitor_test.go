@@ -63,7 +63,7 @@ func TestMonitor_StartAndShutdown(t *testing.T) {
 	go m.Start(ctx, errCh)
 
 	// Register a peer
-	m.Register("127.0.0.1", Outbound)
+	m.Register("192.0.2.1", Outbound)
 	time.Sleep(50 * time.Millisecond)
 
 	cancel()

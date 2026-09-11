@@ -31,9 +31,11 @@ func TestPeerSet_RegisterRejectsInvalidIP(t *testing.T) {
 	}
 	assert.Equal(t, 0, ps.Len())
 
-	// Valid IPs should still work
+	// Valid IPs should still work. The IPv6 peer is a public anycast address,
+	// not 2001:db8::/32: hosts (CI runners included) can bind documentation
+	// addresses, and validPeerIP rejects the host's own.
 	_, _ = ps.Register("10.0.0.1", Outbound)
-	_, _ = ps.Register("2001:db8::1", Outbound)
+	_, _ = ps.Register("2606:4700:4700::1111", Outbound)
 	assert.Equal(t, 2, ps.Len())
 }
 

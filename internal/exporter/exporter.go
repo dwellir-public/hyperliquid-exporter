@@ -141,6 +141,9 @@ func Start(ctx context.Context, cfg config.Config) {
 	if cfg.EnableDisk {
 		safego.Go("disk", func() { monitors.StartDiskMonitor(monitorCtx, &cfg) })
 	}
+	if cfg.EnableCritMsg {
+		safego.Go("crit-msg", func() { monitors.StartCritMsgMonitor(monitorCtx, &cfg) })
+	}
 	if cfg.EnableOperatorConfig && metrics.IsValidator() {
 		safego.Go("consensus", func() { monitors.StartOperatorConfigMonitor(monitorCtx, &cfg) })
 	}

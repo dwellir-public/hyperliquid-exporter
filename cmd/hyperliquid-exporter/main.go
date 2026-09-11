@@ -92,6 +92,8 @@ func main() {
 	enableNodeState := startCmd.Bool("node-state-metrics", true, "Persisted checkpoint and freeze heights under hyperliquid_data")
 	enableDisk := startCmd.Bool("disk-metrics", true, "NODE_HOME size per subdirectory and filesystem capacity")
 	enableOperatorConfig := startCmd.Bool("operator-config-metrics", true, "Operator config presence, age and jailing threshold (validator nodes only)")
+	enableCritMsg := startCmd.Bool("crit-msg-metrics", true, "bug! and crit! counters and top crit locations from crit_msg_stats")
+	enableBinaryMetrics := startCmd.Bool("binary-metrics", false, "Compare the local hl-visor against the published one every 30 min (hl_software_up_to_date; downloads the binary when it changes)")
 
 	if err := startCmd.Parse(os.Args[2:]); err != nil {
 		fmt.Fprintf(os.Stderr, "error parsing flags: %v\n", err)
@@ -131,6 +133,8 @@ func main() {
 		EnableNodeState:      *enableNodeState,
 		EnableDisk:           *enableDisk,
 		EnableOperatorConfig: *enableOperatorConfig,
+		EnableCritMsg:        *enableCritMsg,
+		EnableBinaryMetrics:  *enableBinaryMetrics,
 	}
 
 	cfg := config.LoadConfig(flags)

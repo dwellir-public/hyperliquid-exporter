@@ -30,6 +30,8 @@ type Config struct {
 	EnableNodeState        bool // persisted node-state heights under hyperliquid_data
 	EnableDisk             bool // NODE_HOME size and filesystem capacity
 	EnableOperatorConfig   bool // file_mod_time_tracker configs, validator nodes only
+	EnableCritMsg          bool // bug! and crit! counters from crit_msg_stats
+	EnableBinaryMetrics    bool // compare local hl-visor against the published one (network)
 	LogLevel               string
 }
 
@@ -52,6 +54,8 @@ type Flags struct {
 	EnableNodeState      bool
 	EnableDisk           bool
 	EnableOperatorConfig bool
+	EnableCritMsg        bool
+	EnableBinaryMetrics  bool
 	LogLevel             string
 }
 
@@ -88,6 +92,7 @@ func LoadConfig(flags *Flags) Config {
 	if flags == nil {
 		return Config{
 			NodeHome:               nodeHome,
+			BinaryHome:             binaryHome,
 			NodeBinary:             nodeBinary,
 			LiveStateCheckInterval: 5 * time.Second,
 			ReplicaDataDir:         replicaDataDir,
@@ -97,6 +102,7 @@ func LoadConfig(flags *Flags) Config {
 
 	config := Config{
 		NodeHome:               nodeHome,
+		BinaryHome:             binaryHome,
 		NodeBinary:             nodeBinary,
 		Chain:                  flags.Chain,
 		EnableEVM:              flags.EnableEVM,
@@ -114,6 +120,8 @@ func LoadConfig(flags *Flags) Config {
 		EnableNodeState:        flags.EnableNodeState,
 		EnableDisk:             flags.EnableDisk,
 		EnableOperatorConfig:   flags.EnableOperatorConfig,
+		EnableCritMsg:          flags.EnableCritMsg,
+		EnableBinaryMetrics:    flags.EnableBinaryMetrics,
 		LogLevel:               flags.LogLevel,
 	}
 

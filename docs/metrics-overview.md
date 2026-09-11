@@ -146,8 +146,8 @@ When the parent changes, the old peer's labeled metrics are removed and the swit
 
 | Metric | Type | Labels | Description | Requirements |
 |--------|------|--------|-------------|--------------|
-| `hl_software_up_to_date` | Gauge | - | Whether software is up to date (0=outdated, 1=current) | - |
-| `hl_software_version` | Gauge | `date`, `commit` | Software version info (always 1, version in labels) | - |
+| `hl_software_up_to_date` | Gauge | - | 1 when the local hl-visor commit matches the hl-visor published on the Hyperliquid CDN, 0 otherwise. Unset when `$BINARY_HOME/hl-visor` is missing. hl-visor is what operators manage; it swaps hl-node itself, so the hl-node commit is not the right comparison | `--binary-metrics` |
+| `hl_software_version` | Gauge | `date`, `commit` | Local hl-node version from `hl-node --version` (always 1, version in labels). Re-probed only when the binary's mtime changes | - |
 
 
 ## Consensus Metrics
@@ -205,9 +205,9 @@ The above are available to all node types, while the below metrics require acces
 
 ## Node Host Metrics
 
-Ported from upstream v4.1.1 under upstream names. Each monitor reads local files or procfs only and is on by default; disable with `--<flag>=false`. All report through the source-health envelope in the Exporter Metrics section (`stream` is `process`, `child_stderr`, `visor`, `node_state`, `disk`, `operator_config`).
+Ported from upstream v4.1.1 under upstream names. Each monitor reads local files or procfs only and is on by default; disable with `--<flag>=false`. All report through the source-health envelope in the Exporter Metrics section (`stream` is `process`, `child_stderr`, `visor`, `node_state`, `disk`, `operator_config`, `crit_msg`).
 
-Not ported, reviewed and superseded: upstream's per-monitor health gauges (`hl_node_child_stderr_scan_up`, `hl_node_child_stderr_last_complete_timestamp_seconds`, `hl_node_disk_walk_up`, `hl_node_disk_statfs_up`, `hl_node_disk_errors_total`, `hl_node_disk_last_complete_age_seconds`, `hl_visor_last_observation_age_seconds`) are covered by the generic envelope; upstream's `*_available` and `*_populated` companion flags (`hl_visor_hardfork_version_available`, `hl_visor_scheduled_freeze_height_available`, `hl_visor_scheduled_freeze_height_current`, `hl_visor_reference_lag_populated`) are unnecessary because the corresponding gauge is withdrawn when the field is absent; upstream's deprecated legacy names (`hl_visor_freeze_abci_height`, `hl_visor_blocks_above_freeze`, `hl_evm_db_checkpoint_height`, `hl_evm_db_checkpoint_lag_blocks`) have the `hl_node_persisted_*` replacements here; `hl_node_operator_config_failed_loads` is the sum of the per-file series.
+Not ported, reviewed and superseded: upstream's per-monitor health gauges (`hl_node_child_stderr_scan_up`, `hl_node_child_stderr_last_complete_timestamp_seconds`, `hl_node_disk_walk_up`, `hl_node_disk_statfs_up`, `hl_node_disk_errors_total`, `hl_node_disk_last_complete_age_seconds`, `hl_visor_last_observation_age_seconds`) are covered by the generic envelope; upstream's `*_available` and `*_populated` companion flags (`hl_visor_hardfork_version_available`, `hl_visor_scheduled_freeze_height_available`, `hl_visor_scheduled_freeze_height_current`, `hl_visor_reference_lag_populated`) are unnecessary because the corresponding gauge is withdrawn when the field is absent; upstream's deprecated legacy names (`hl_visor_freeze_abci_height`, `hl_visor_blocks_above_freeze`, `hl_evm_db_checkpoint_height`, `hl_evm_db_checkpoint_lag_blocks`) have the `hl_node_persisted_*` replacements here; `hl_node_operator_config_failed_loads` is the sum of the per-file series; `hl_node_critical_message_projection_available`, `hl_node_critical_message_projection_parse_ok` and `hl_node_critical_message_generation_match` are covered by the envelope plus the withdrawal rule below.
 
 ### Process (`--process-metrics`)
 
@@ -287,6 +287,21 @@ Reads `file_mod_time_tracker/` every 5 min: presence and age of eight fixed oper
 | `hl_node_jailing_threshold_seconds` | Gauge | - | `latency_ema_jail_threshold`: the heartbeat-ack EMA above which this validator votes to jail a peer. Divide `hl_consensus_validator_latency_ema_seconds` by it for per-peer headroom | Validator node |
 | `hl_node_jailing_dry_run` | Gauge | - | 1 when jail votes are logged but not cast | Validator node |
 
+### Critical messages (`--crit-msg-metrics`)
+
+Reads the last complete record of the newest `data/crit_msg_stats/<source>/<YYYYMMDD>` file every 30 s for `hl-node` and `hl-visor`. The counts are cumulative since the process started at the base time and reset on restart, so they are gauges; a record older than 15 min withdraws its source. Per-location series come from `/tmp/crit_msg_latest_stats/hl-visor.json`, which hl-visor rewrites next to its daily record, and are published only while that document's start time and counts equal the daily hl-visor record, so a restart cannot mix two generations. `n_bugs` above zero is the strongest page-someone signal hl-node emits; a rising crit count is an ongoing incident; a rising location count means a new call site started firing.
+
+| Metric | Type | Labels | Description | Requirements |
+|--------|------|--------|-------------|--------------|
+| `hl_node_bugs` | Gauge | `source` | Cumulative `bug!` events for the current process generation | - |
+| `hl_node_crits` | Gauge | `source` | Cumulative `crit!` events for the current process generation | - |
+| `hl_node_crit_locations` | Gauge | `source` | Distinct `file:line` call sites that fired at least once this process lifetime | - |
+| `hl_node_critical_messages_base_time_seconds` | Gauge | `source` | Unix time the counters started accumulating (process start) | - |
+| `hl_node_critical_message_sample_timestamp_seconds` | Gauge | `source` | Timestamp of the daily record the values come from | - |
+| `hl_node_crit_location` | Gauge | `file`, `line` | Crit count per call site from the matched hl-visor rich document; basename only, top 32 by count | - |
+| `hl_node_crit_location_ignored` | Gauge | `file`, `line` | 1 when the operator suppressed the location via `crit_msg_ignore.json` | - |
+| `hl_node_crit_location_last_seen_seconds` | Gauge | `file`, `line` | Unix time the location last fired | - |
+
 ## Exporter Metrics
 
 | Metric | Type | Labels | Description | Requirements |
@@ -295,9 +310,9 @@ Reads `file_mod_time_tracker/` every 5 min: presence and age of eight fixed oper
 | `hl_exporter_source_up` | Gauge | `stream` | 1 when the last poll of a consumed log stream resolved and read a file without error. Distinguishes "no peers" from "source unreadable" | - |
 | `hl_exporter_source_sample_age_seconds` | Gauge | `stream` | Seconds since the last well-formed record was read from the stream | - |
 | `hl_exporter_parse_errors_total` | Counter | `stream`, `stage` | Records rejected by a stream parser. `stage` is `json`, `shape`, `timestamp`, `payload`, `record` or `row`. A rising value on a healthy node means hl-node changed a log shape | - |
-| `hl_exporter_source_errors_total` | Counter | `stream`, `stage` | Failures reading or interpreting a source (`stat`, `read`, `walk`, `statfs`, `decode`, `schema`). A missing source is not an error; it sets `hl_exporter_source_up` to 0 | - |
+| `hl_exporter_source_errors_total` | Counter | `stream`, `stage` | Failures reading or interpreting a source (`stat`, `read`, `walk`, `statfs`, `decode`, `schema`, `request`). A missing source is not an error; it sets `hl_exporter_source_up` to 0 | - |
 
-`stream` names the consumed source. Log streams, which report parse errors: `node_fast_block_times`, `node_slow_block_times`, `block_times` (legacy layout), `consensus`, `status` (tailed by the consensus monitor), `validator_status` (the 30 s last-line poll of the same status log), `replica_cmds`, `evm_block_and_receipts`, `gossip_rpc`, `gossip_connections`, `tcp_traffic`. File and procfs sources, which report source errors only: `process`, `child_stderr`, `visor`, `node_state`, `disk`, `operator_config`. The proposal monitor tails `replica_cmds` too but reports nothing; the replica monitor owns that stream. `docs/operations/hl-node-schema-watch.md` describes how to act on a rising parse-error counter.
+`stream` names the consumed source. Log streams, which report parse errors: `node_fast_block_times`, `node_slow_block_times`, `block_times` (legacy layout), `consensus`, `status` (tailed by the consensus monitor), `validator_status` (the 30 s last-line poll of the same status log), `replica_cmds`, `evm_block_and_receipts`, `gossip_rpc`, `gossip_connections`, `tcp_traffic`. File and procfs sources, which report source errors only: `process`, `child_stderr`, `visor`, `node_state`, `disk`, `operator_config`, `node_binary` (the local hl-node probe) and `visor_update` (the published hl-visor check, `--binary-metrics`; stage `request` for a failed fetch). The proposal monitor tails `replica_cmds` too but reports nothing; the replica monitor owns that stream. `docs/operations/hl-node-schema-watch.md` describes how to act on a rising parse-error counter.
 
 ## Label Definitions
 

@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
@@ -17,97 +16,118 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 )
 
-// written by the version monitor, read by the update checker
-var currentCommitHash atomic.Value // string
+// nodeBinaryStream is the envelope name for the local hl-node binary probe.
+const nodeBinaryStream = "node_binary"
 
-func loadCommitHash() string {
-	s, _ := currentCommitHash.Load().(string)
-	return s
-}
-
-func StartVersionMonitor(ctx context.Context, cfg config.Config, errCh chan<- error) {
+// StartVersionMonitor publishes hl_software_version from `hl-node --version`.
+// The binary only changes when hl-visor swaps it, so the copy and exec run
+// once and then only when the file's mtime moves.
+func StartVersionMonitor(ctx context.Context, cfg config.Config, _ chan<- error) {
 	safego.Go("system", func() {
-		// run immediately on startup
-		if err := updateVersionInfo(ctx, cfg); err != nil {
-			errCh <- fmt.Errorf("version monitor error: %w", err)
+		var lastMtime time.Time
+		probe := func() {
+			mtime, err := updateVersionInfo(ctx, cfg.NodeBinary, lastMtime)
+			if err != nil {
+				logger.ErrorComponent("system", "Version monitor error: %v", err)
+				return
+			}
+			lastMtime = mtime
 		}
+		probe()
 
 		ticker := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
-
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if err := updateVersionInfo(ctx, cfg); err != nil {
-					errCh <- fmt.Errorf("version monitor error: %w", err)
-				}
+				probe()
 			}
 		}
 	})
 }
 
-func updateVersionInfo(ctx context.Context, cfg config.Config) error {
-	// create a temporary file for the binary copy
-	tmpFile, err := os.CreateTemp("", "hl_node_*.tmp")
+// updateVersionInfo probes path when its mtime is newer than lastMtime and
+// returns the mtime that is now published.
+func updateVersionInfo(ctx context.Context, path string, lastMtime time.Time) (time.Time, error) {
+	info, err := os.Stat(path)
 	if err != nil {
-		return fmt.Errorf("error creating temp file: %w", err)
+		metrics.IncrementSourceErrors(nodeBinaryStream, "stat")
+		metrics.SetSourceUp(nodeBinaryStream, false)
+		return lastMtime, fmt.Errorf("stat node binary: %w", err)
+	}
+	if !lastMtime.IsZero() && !info.ModTime().After(lastMtime) {
+		metrics.SetSourceUp(nodeBinaryStream, true)
+		return lastMtime, nil
+	}
+
+	commit, date, err := binaryVersionViaCopy(ctx, path)
+	if err != nil {
+		metrics.IncrementSourceErrors(nodeBinaryStream, "decode")
+		metrics.SetSourceUp(nodeBinaryStream, false)
+		return lastMtime, err
+	}
+	metrics.SetSourceUp(nodeBinaryStream, true)
+	metrics.MarkSourceSample(nodeBinaryStream, time.Now())
+	metrics.SetSoftwareVersion(commit, date)
+	logger.InfoComponent("system", "Detected hl-node version: commit=%s, date=%s", commit, date)
+	return info.ModTime(), nil
+}
+
+// binaryVersionViaCopy copies the binary to a temp file before running
+// --version on it, so hl-visor atomically swapping the real binary mid-exec
+// cannot bite. Use for live binaries; a fresh download nothing else touches
+// can go through binaryVersionDirect.
+func binaryVersionViaCopy(ctx context.Context, path string) (commit, date string, err error) {
+	tmpFile, err := os.CreateTemp("", "hl_version_*.tmp")
+	if err != nil {
+		return "", "", fmt.Errorf("create temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
-	_ = tmpFile.Close()
-
-	// ensure cleanup
 	defer func() { _ = os.Remove(tmpPath) }()
 
-	// copy the binary to the temp file
-	source, err := os.Open(cfg.NodeBinary)
+	source, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("error opening source binary: %w", err)
+		_ = tmpFile.Close()
+		return "", "", fmt.Errorf("open binary: %w", err)
 	}
 	defer func() { _ = source.Close() }()
 
-	dest, err := os.OpenFile(tmpPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0755)
-	if err != nil {
-		return fmt.Errorf("error opening temp file: %w", err)
+	if _, err := io.Copy(tmpFile, source); err != nil {
+		_ = tmpFile.Close()
+		return "", "", fmt.Errorf("copy binary: %w", err)
 	}
-	defer func() { _ = dest.Close() }()
-
-	if _, err := io.Copy(dest, source); err != nil {
-		return fmt.Errorf("error copying binary: %w", err)
+	if err := tmpFile.Close(); err != nil {
+		return "", "", fmt.Errorf("close temp file: %w", err)
 	}
-	_ = dest.Close()
+	return binaryVersionDirect(ctx, tmpPath)
+}
 
-	// make the temp file executable
-	if err := os.Chmod(tmpPath, 0755); err != nil {
-		return fmt.Errorf("error making temp file executable: %w", err)
+// binaryVersionDirect runs `<path> --version` and parses the
+// "commit <hash> | <date> | ..." output shared by hl-node and hl-visor.
+func binaryVersionDirect(ctx context.Context, path string) (commit, date string, err error) {
+	if err := os.Chmod(path, 0o755); err != nil {
+		return "", "", fmt.Errorf("chmod binary: %w", err)
 	}
 
-	// run version command on the temp copy
-	cmd := exec.CommandContext(ctx, tmpPath, "--version")
+	cmd := exec.CommandContext(ctx, path, "--version")
 	var out bytes.Buffer
 	cmd.Stdout = &out
-
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("error running version command: %w", err)
+		return "", "", fmt.Errorf("run --version: %w", err)
 	}
+	return parseBinaryVersion(out.String())
+}
 
-	versionOutput := out.String()
-	parts := strings.Split(versionOutput, "|")
-	if len(parts) >= 3 {
-		commitLine := parts[0]
-		date := strings.TrimSpace(parts[1])
-
-		commitParts := strings.Split(commitLine, " ")
-		if len(commitParts) >= 2 {
-			currentCommitHash.Store(strings.TrimSpace(commitParts[1]))
-		}
-
-		hash := loadCommitHash()
-		metrics.SetSoftwareVersion(hash, date)
-		logger.InfoComponent("system", "Detected hl-node version: commit=%s, date=%s", hash, date)
-		return nil
+func parseBinaryVersion(output string) (commit, date string, err error) {
+	parts := strings.Split(output, "|")
+	if len(parts) < 3 {
+		return "", "", fmt.Errorf("unexpected version output format: %q", output)
 	}
-
-	return fmt.Errorf("unexpected version output format: %s", versionOutput)
+	commitParts := strings.Fields(parts[0])
+	if len(commitParts) < 2 {
+		return "", "", fmt.Errorf("unexpected version output format: %q", output)
+	}
+	return commitParts[1], strings.TrimSpace(parts[1]), nil
 }

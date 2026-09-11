@@ -48,6 +48,16 @@ var (
 	HLNodeVisorHeightAbovePersistedFrz api.Float64ObservableGauge
 	HLNodePersistedStateFileAvailable  api.Float64ObservableGauge
 
+	// crit_msg (label: source) and crit locations (labels: file, line)
+	HLNodeBugs                        api.Float64ObservableGauge
+	HLNodeCrits                       api.Float64ObservableGauge
+	HLNodeCritLocations               api.Float64ObservableGauge
+	HLNodeCriticalMessagesBaseTime    api.Float64ObservableGauge
+	HLNodeCriticalMessageSampleTS     api.Float64ObservableGauge
+	HLNodeCritLocation                api.Float64ObservableGauge
+	HLNodeCritLocationIgnored         api.Float64ObservableGauge
+	HLNodeCritLocationLastSeenSeconds api.Float64ObservableGauge
+
 	// disk
 	HLNodeDiskUsedBytes            api.Float64ObservableGauge
 	HLNodeDiskFreeBytes            api.Float64ObservableGauge
@@ -133,6 +143,15 @@ func createNodeInstruments() error {
 	HLNodeJailingThresholdSeconds = gauge("hl_node_jailing_threshold_seconds", "latency_ema_jail_threshold from heartbeat_jailing_config.json: the heartbeat-ack EMA above which this validator votes to jail a peer; absent without the file")
 	HLNodeJailingDryRun = gauge("hl_node_jailing_dry_run", "1 if heartbeat_jailing_config.json has dry_run=true (jail votes are logged, not cast); absent without the file")
 
+	HLNodeBugs = gauge("hl_node_bugs", "Cumulative bug! event count reported by the source process generation; resets to 0 when the process restarts")
+	HLNodeCrits = gauge("hl_node_crits", "Cumulative crit! event count reported by the source process generation; resets to 0 when the process restarts")
+	HLNodeCritLocations = gauge("hl_node_crit_locations", "Distinct source-code call sites (file:line) that have fired a bug or crit at least once for this process lifetime")
+	HLNodeCriticalMessagesBaseTime = gauge("hl_node_critical_messages_base_time_seconds", "Unix timestamp at which the current critical-message counters started accumulating (source process start)")
+	HLNodeCriticalMessageSampleTS = gauge("hl_node_critical_message_sample_timestamp_seconds", "Source timestamp carried by the latest complete daily critical-message record")
+	HLNodeCritLocation = gauge("hl_node_crit_location", "Per-source-location crit count from the hl-visor rich critical-message file, cumulative since the visor process started; top 32 locations only")
+	HLNodeCritLocationIgnored = gauge("hl_node_crit_location_ignored", "1 if hl-node marks this crit location is_ignored (operator-suppressed via crit_msg_ignore.json), else 0")
+	HLNodeCritLocationLastSeenSeconds = gauge("hl_node_crit_location_last_seen_seconds", "Unix timestamp at which the named source location most recently emitted a crit")
+
 	HLExporterSourceErrorsCounter = counter("hl_exporter_source_errors_total", "Failures reading or interpreting a consumed source, by stream and stage (stat, read, walk, statfs, decode, schema)")
 
 	return errors.Join(errs...)
@@ -192,6 +211,13 @@ func seriesKey(labels []attribute.KeyValue) string {
 }
 
 // Read-side accessors, mainly for tests
+
+func Int64GaugeValue(g api.Int64ObservableGauge) (int64, bool) {
+	metricsMutex.RLock()
+	defer metricsMutex.RUnlock()
+	v, ok := currentValues[g].(int64)
+	return v, ok
+}
 
 func GaugeValue(g api.Float64ObservableGauge) (float64, bool) {
 	metricsMutex.RLock()

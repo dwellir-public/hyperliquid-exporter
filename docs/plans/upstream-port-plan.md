@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-11
 **Commit:** 447a838 (main), upstream/main at b150dcc (v4.1.1)
-**Status:** phases 1 to 5 landed on branch `upstream-port-sep26` (commits `2b11c0c`, `1696ea7`, `42b119e`, `28c558d`, `6911bde`), unreleased. Phase 6 is next; see Handoff. Phases are release-sized units; version numbers are assigned at release prep, not here.
+**Status:** phases 1 to 5 landed on branch `upstream-port-sep26` (commits `2b11c0c`, `1696ea7`, `42b119e`, `28c558d`, `6911bde`), unreleased. Phase 6 is in progress (`2e0bc49`, `f131c93`, `7ab2f4a`, `0fa9c7d`, `59f0958`); what remains is listed in the phase 6 line and is optional. See Handoff. Phases are release-sized units; version numbers are assigned at release prep, not here.
 
 ## TL;DR
 
@@ -68,7 +68,7 @@ Settled here so implementers do not re-derive them.
 - **Validator-only monitors** (operator_config, accumulator_consensus) start only when `config.IsValidator` is true. No new flag; the identity check at `cmd/hyperliquid-exporter/main.go:145` already exists.
 - **Series sweep gate.** Peer and connectivity series already remove themselves (`peermon/monitor.go:195`, `gossip_monitor.go:228-305`, `parent_peer_monitor.go:182`, `consensus_monitor.go:854`). The only unbounded labeled families are per-validator gauges, so 3.4 is the sole prerequisite for deleting the sweep in 2.3. Review in phase 3 found `hl_consensus_heartbeat_status` (keyed `<validator>_<status_type>`) missing from that inventory; `RemoveValidatorSeries` covers it.
 - **Parse-error counter naming.** 4.4's `hl_p2p_gossip_parse_errors_total{stage}` was not created. 7.2's generalized `hl_exporter_parse_errors_total{stream,stage}` landed in phase 4 instead, with `hl_exporter_source_up{stream}`, `hl_exporter_source_sample_age_seconds{stream}` and (phase 5) `hl_exporter_source_errors_total{stream,stage}` as the envelope for every source. Tier 5 monitors use this envelope instead of upstream's per-monitor `*_scan_up`, `*_walk_up`, `*_errors_total` and `*_last_observation_age_seconds` gauges; the omitted names are listed in `docs/metrics-overview.md`.
-- **Tier 5 flags.** `--process-metrics`, `--child-stderr-metrics`, `--visor-metrics`, `--node-state-metrics`, `--disk-metrics`, `--operator-config-metrics`, all default on. The charm does not yet expose them (Follow-ups).
+- **Tier 5 flags.** `--process-metrics`, `--child-stderr-metrics`, `--visor-metrics`, `--node-state-metrics`, `--disk-metrics`, `--operator-config-metrics`, `--crit-msg-metrics`, all default on. The charm does not yet expose them (Follow-ups).
 - **Rescan gate value (2.1).** 2 s for call sites inside EOF loops (block, consensus, replica, evm, proposal, round_advance, validator_status). No gate for pollers that already sleep 30 s or more (gossip, validator_ip).
 - **0.3 before 4.1.** 0.3 is the hl-node schema break and ships in phase 1 as a two-line patch. 4.1 rewrites the same file but depends on the 2.1 resolver, so it stays in phase 2 and absorbs 0.3 there.
 - **Fixtures for schema watch (7.2).** Commit a trimmed sample (about 20 lines per stream) under `internal/monitors/testdata/schema/` so the drift test runs in CI. The full hour pulled by the routine stays gitignored under `testdata/live/` for local runs.
@@ -263,6 +263,7 @@ Also replace `getLatestHourlyFile` in `ours:internal/monitors/gossip_monitor.go:
 - Upstream: `2cb58cd` (compare local hl-visor to published hl-visor, ETag conditional requests, no curl), `10cc834` (v4.1.0, behind `--binary-metrics`, off by default). `up:internal/monitors/update_checker.go:21,113-165`, `up:internal/monitors/version_monitor.go`.
 - Ours: downloads `hl-visor` to a temp file every cycle at `ours:internal/monitors/update_checker.go:62-68`; compares against local hl-node.
 - Change: port both behind `--binary-metrics`, default off (Decisions).
+- Done in phase 6 with one deviation: only the update checker is behind `--binary-metrics`. The version monitor reads the local binary only, so by the local-sources-default-on rule it stays on; it gained the mtime gate so the copy and exec no longer run every 30 min. The visor lives at `$BINARY_HOME/hl-visor`; `BinaryHome` is now populated in the config. No `SkipUpdateCheck` or `SkipVersionCheck` flags were ported.
 
 ### 3.8 Heartbeat ack correlation
 
@@ -339,7 +340,7 @@ All are absent from our tree. Ranked by operator value. Each needs its metrics r
 | 3 | visor + node_state | `visor_monitor.go` (378), `node_state_monitor.go` (165) | `hyperliquid_data/visor_abci_state.json`, `freeze_abci_height`, `evm_db_hub_*/cp_checkpoint_height` | `hl_visor_height`, hardfork version, freeze height, fast/slow gap | Coupled pair |
 | 4 | disk | `disk_monitor.go` (295) + statfs/allocation stubs | statfs + allowlisted subdir walk every 120 s | free/used/allocated bytes | Tune subdir allowlist |
 | 5 | operator_config | `operator_config_monitor.go` (265) | `file_mod_time_tracker/`, `heartbeat_jailing_config.json` | `hl_node_jailing_threshold_seconds`, `hl_node_jailing_dry_run`, config ages | Validator only. Headroom recipe in `up:CHANGELOG.md` v3.1.0 |
-| 6 | crit_msg + crit_locations | `crit_msg_monitor.go` (263), `critical_generation.go` (84), `crit_locations_monitor.go` (287) | `data/crit_msg_stats/{hl-node,hl-visor}/<date>` | `hl_node_bugs_total`, `hl_node_crits_total`, top locations | Three-file coupling |
+| 6 | crit_msg + crit_locations | `crit_msg_monitor.go` (263), `critical_generation.go` (84), `crit_locations_monitor.go` (287) | `data/crit_msg_stats/{hl-node,hl-visor}/<date>` | `hl_node_bugs`, `hl_node_crits`, top locations | Done in phase 6 as one file and one goroutine (`--crit-msg-metrics`). The generation match is base time plus both counts; upstream's projection-state gauges are not ported |
 | 7 | snapshot_status | `snapshot_status_monitor.go` (172) | `data/periodic_abci_state_statuses/` | snapshot age, last height | |
 | 8 | accumulator_consensus | `accumulator_consensus_monitor.go` (361) | per-bucket accumulator files | `hl_consensus_committed_*`, `hl_consensus_dropped_txs` | Validator only. Sum `delta`, not `n` (v3.1.0 fix) |
 | 9 | info_probe | `info_probe_monitor.go` (239) | POST `{"type":"meta"}` to `:3001/info` | `hl_info_endpoint_up`, latency | Behind `--probe-info-endpoint` |
@@ -450,7 +451,7 @@ Phases intentionally cut across tiers. Tiers rank items by severity and category
 3. **Metric correctness (done, `42b119e`):** 3.1, 3.2, 3.5, 1.5, 3.4, then 2.3. Not verified on a live node.
 4. **Peer quality (done, `28c558d`):** 4.4, 4.5, 4.6, rest of 4.7, 1.8. Not verified on a live node.
 5. **New monitors (done, `6911bde`):** Tier 5 ranks 1 to 5 as six monitors (visor and node_state each got a flag). Charm flags are a follow-up. Not verified on a live node.
-6. **Infra and routines (in progress):** 6.1 and 6.2 done (`2e0bc49`), 6.3 deferred, 6.4 and 6.5 dropped (see Decisions). Tier 7 and 3.3 done. 3.8 done. Remaining as capacity allows: 3.7, 2.4, Tier 5 ranks 6 to 10.
+6. **Infra and routines (in progress):** 6.1 and 6.2 done (`2e0bc49`), 6.3 deferred, 6.4 and 6.5 dropped (see Decisions). Tier 7 and 3.3 done. 3.7, 3.8 and Tier 5 rank 6 done. Remaining as capacity allows: 2.4, Tier 5 ranks 7 to 10.
 
 ## Handoff
 

@@ -93,8 +93,8 @@ jobs:
 
           echo "VERSION is newer than latest final: $OLD_FINAL_VERSION → $NEW_VERSION"
 
-  test-heavy:
-    name: Test heavy
+  test-race:
+    name: Test race
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     needs: [version-bump-check]
@@ -107,25 +107,7 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Run heavy tests (1x -race -heavy -shuffle)
-        shell: bash
-        run: go test -mod=readonly ./... -count=1 -tags=heavy -race -shuffle=on
-
-  test-light:
-    name: Test light
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    timeout-minutes: 30
-    needs: [version-bump-check]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-
-      - name: Run light tests (1x -race -shuffle)
+      - name: Run race tests (1x -race -shuffle)
         shell: bash
         run: go test -mod=readonly ./... -count=1 -race -shuffle=on
 
@@ -165,7 +147,7 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
-          args: -v --build-tags="heavy"
+          args: -v
 
   govulncheck:
     name: Vulnerability scan
@@ -184,7 +166,7 @@ jobs:
 
   release:
     name: "Build, tag & release (${{ needs.initialize.outputs.version }})"
-    needs: [version-bump-check, initialize, test-heavy, test-light, test-flaky, lint, govulncheck]
+    needs: [version-bump-check, initialize, test-race, test-flaky, lint, govulncheck]
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 30
     permissions:
@@ -351,7 +333,7 @@ jobs:
     name: Release summary
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
-    needs: [initialize, version-bump-check, test-heavy, test-light, test-flaky, lint, govulncheck, release]
+    needs: [initialize, version-bump-check, test-race, test-flaky, lint, govulncheck, release]
     if: ${{ always() }}  # ensure this job runs even if dependencies failed
     steps:
       - name: Write release summary
@@ -362,8 +344,7 @@ jobs:
             echo "### Job Status"
             echo "- Initialize:        ${{ needs.initialize.result }}"
             echo "- Version bump:      ${{ needs['version-bump-check'].result }}"
-            echo "- Tests (heavy):     ${{ needs['test-heavy'].result }}"
-            echo "- Tests (light):     ${{ needs['test-light'].result }}"
+            echo "- Tests (race):      ${{ needs['test-race'].result }}"
             echo "- Tests (flaky):     ${{ needs['test-flaky'].result }}"
             echo "- Lint:              ${{ needs.lint.result }}"
             echo "- Vuln scan:         ${{ needs.govulncheck.result }}"

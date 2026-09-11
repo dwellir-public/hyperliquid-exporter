@@ -36,10 +36,9 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
-          args: --build-tags="heavy"
 
-  unit-tests-heavy:
-    name: Unit tests (heavy)
+  unit-tests-race:
+    name: Unit tests (race)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     steps:
@@ -48,7 +47,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go mod download
-      - run: go test -mod=readonly ./... -count=1 -shuffle=on -tags=heavy -race
+      - run: go test -mod=readonly ./... -count=1 -shuffle=on -race
 
   unit-tests-flaky:
     name: Unit tests (flaky)
@@ -78,7 +77,7 @@ jobs:
     name: CI Summary
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
-    needs: [golangci, unit-tests-heavy, unit-tests-flaky, govulncheck]
+    needs: [golangci, unit-tests-race, unit-tests-flaky, govulncheck]
     if: always() # Always run, even if earlier jobs fail
     steps:
       - name: Write CI summary
@@ -87,7 +86,7 @@ jobs:
             echo "## 🧪 CI Test Summary"
             echo ""
             echo "- **Lint:** ${{ needs.golangci.result }}"
-            echo "- **Unit (heavy):** ${{ needs.unit-tests-heavy.result }}"
+            echo "- **Unit (race):** ${{ needs.unit-tests-race.result }}"
             echo "- **Unit (flaky):** ${{ needs.unit-tests-flaky.result }}"
             echo "- **Vuln scan:** ${{ needs.govulncheck.result }}"
             echo ""

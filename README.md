@@ -81,7 +81,8 @@ In production, `hyperliquid-exporter` is deployed as a systemd service via the
 - [Metrics Reference](docs/metrics-overview.md) - All metrics with descriptions and labels
 - [Upstream Sync Routine](docs/operations/upstream-sync.md) - How and when to review upstream changes
 - [hl-node Schema Watch](docs/operations/hl-node-schema-watch.md) - How to catch hl-node log format changes
+- [Deferred Work](docs/TODO.md) - Triaged items not yet scheduled
 
 ## Relation to upstream
 
-This repository is a fork of [validaoxyz/hyperliquid-exporter](https://github.com/validaoxyz/hyperliquid-exporter) and is intentionally divergent. It keeps its own metric names, adds peer latency monitoring, and ports upstream changes by hand on a schedule rather than tracking upstream releases. The port history and rationale are in [docs/plans/upstream-port-plan.md](docs/plans/upstream-port-plan.md).
+This repository is a fork of [validaoxyz/hyperliquid-exporter](https://github.com/validaoxyz/hyperliquid-exporter) and is intentionally divergent. It keeps its own metric names, adds peer latency monitoring, and ports upstream changes by hand on a schedule rather than tracking upstream releases. The 2026-09 port of upstream v3.0.0 to v4.1.1 is recorded in [docs/reports/upstream-port-v3-to-v4.md](docs/reports/upstream-port-v3-to-v4.md).

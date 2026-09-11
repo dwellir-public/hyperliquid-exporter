@@ -1,0 +1,14 @@
+# TODO
+
+Deferred work that has been triaged but not scheduled. Reference from code as `TODO(<id>)`.
+
+| ID | Item | Context |
+|---|---|---|
+| T1 | Expose the Tier 5 monitor flags in the charm (`dwellir-public/ops`, `juju/charms/hyperliquid-metrics-exporter`): `--process-metrics`, `--child-stderr-metrics`, `--visor-metrics`, `--node-state-metrics`, `--disk-metrics`, `--operator-config-metrics`, `--crit-msg-metrics`, `--binary-metrics`. Until then operators cannot disable a monitor without editing service args | `docs/reports/upstream-port-v3-to-v4.md` |
+| T2 | Validator-node verification of the 2026-09 upstream port: validator count and signer mapping from `current_stakes`, `hl_timeout_rounds_total` incrementing, proposer `name` label, one order counts as one operation, `hl_node_jailing_threshold_seconds`, exporter CPU under 20%. Also the first live schema-watch pull from a validator (`docs/operations/hl-node-schema-watch.md` step 1) so `testdata/schema/` is refreshed from real lines | Only a mainnet non-validator was available; `docs/reports/upstream-port-v3-to-v4.md` section 6 |
+| T3 | Second-engine review of `7ab2f4a`, `0fa9c7d`, `59f0958`, `2fabd92`, `8d1e2eb`; they shipped with a single Claude pass | `docs/reports/upstream-port-v3-to-v4.md` section 8 |
+| T4 | Consensus monitor per-line lock batching: accumulate per-batch deltas and flush at EOF, gate QC participation recalculation to once per 2 s (upstream `f38ddb6`). Only if the T2 validator measurement shows the consensus stream hot; a non-validator sits at about 13 to 15% CPU | `internal/monitors/consensus_monitor.go` `statsMutex` |
+| T5 | `snapshot_status` monitor from `git show upstream/main:internal/monitors/snapshot_status_monitor.go` (172 lines, `data/periodic_abci_state_statuses/`, snapshot age and last height). Local-file only, fits default-on; no operator ask yet | `docs/operations/upstream-sync.md` standing decisions |
+| T6 | `accumulator_consensus` monitor from `git show upstream/main:internal/monitors/accumulator_consensus_monitor.go` (361 lines, `hl_consensus_committed_*`, `hl_consensus_dropped_txs`). Validator only; sum `delta`, not `n` (upstream v3.1.0 fix). Blocked on T2 | `docs/operations/upstream-sync.md` standing decisions |
+| T7 | Metrics listener self-observability: `hl_exporter_build_info{version,commit,go_version}`, `/livez`, `/readyz` keyed off `hl_exporter_source_up`, `--pprof` (upstream `internal/metrics/prometheus.go`). Build info exists in `cmd/hyperliquid-exporter/main.go` `printBuildInfo` but is not exported. Revisit when an operator asks for readiness probing | `internal/metrics/prometheus.go` |
+| T8 | Survey `.github/workflows/` in `bcm-probe`, `dwellir-admin-dashboard` (`schema-drift.yml`), `hyperliquid-archiver`, `hyperliquid-index`, `hyperliquid-rest-server` for CI steps adopted since ours were written; `iris` and `hyperliquid-l1-gateway` are already covered | `docs/operations/upstream-sync.md` standing decisions |

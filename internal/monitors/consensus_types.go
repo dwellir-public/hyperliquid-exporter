@@ -42,13 +42,19 @@ type TCData struct {
 
 // heartbeat message
 type HeartbeatMessage struct {
-	Validator string  `json:"validator"`
-	RandomID  float64 `json:"random_id"`
+	Validator string `json:"validator"`
+	RandomID  uint64 `json:"random_id"`
+	Round     uint64 `json:"round"`
 }
 
 // heartbeat acknowledgment
+// Validator names the responder on current builds and the origin on older
+// ones, often abbreviated (0x1337..334f); the wrapper's sender/source carries
+// the full responder identity, so correlation uses that instead.
 type HeartbeatAckMessage struct {
-	RandomID float64 `json:"random_id"`
+	Validator string `json:"validator"`
+	RandomID  uint64 `json:"random_id"`
+	Round     uint64 `json:"round"`
 }
 
 // parsed status log line

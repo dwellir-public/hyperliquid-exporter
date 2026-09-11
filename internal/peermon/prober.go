@@ -2,6 +2,7 @@ package peermon
 
 import (
 	"context"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 	"net"
 	"strconv"
 	"sync"
@@ -47,7 +48,7 @@ func Probe(ctx context.Context, ip string, preferredPort int) ProbeResult {
 	var wg sync.WaitGroup
 	for _, port := range ports {
 		wg.Add(1)
-		go func(port int) {
+		safego.Go("peer-latency", func() {
 			defer wg.Done()
 			if result, ok := tryPort(probeCtx, ip, port); ok {
 				select {
@@ -56,7 +57,7 @@ func Probe(ctx context.Context, ip string, preferredPort int) ProbeResult {
 				case <-probeCtx.Done():
 				}
 			}
-		}(port)
+		})
 	}
 
 	done := make(chan struct{})

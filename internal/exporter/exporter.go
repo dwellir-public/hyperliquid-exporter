@@ -10,6 +10,7 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/monitors"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/peermon"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 )
 
 const persistentFilesDir = ".hyperliquid-exporter"
@@ -41,51 +42,51 @@ func Start(ctx context.Context, cfg config.Config) {
 	peerLatencyErrCh := make(chan error, 1)
 
 	logger.InfoComponent("core", "Initializing block monitor...")
-	go monitors.StartBlockMonitor(monitorCtx, cfg, blockErrCh)
+	safego.Go("core", func() { monitors.StartBlockMonitor(monitorCtx, cfg, blockErrCh) })
 
 	// start val API monitor early to populate signer mappings
 	logger.InfoComponent("consensus", "Initializing validator API monitor...")
-	go monitors.StartValidatorMonitor(monitorCtx, cfg, validatorErrCh)
+	safego.Go("consensus", func() { monitors.StartValidatorMonitor(monitorCtx, cfg, validatorErrCh) })
 
 	// only initialize proposal monitor if replica metrics are disabled
 	if !cfg.EnableReplicaMetrics {
 		logger.InfoComponent("consensus", "Initializing proposal monitor...")
-		go monitors.StartProposalMonitor(monitorCtx, cfg, proposalErrCh)
+		safego.Go("consensus", func() { monitors.StartProposalMonitor(monitorCtx, cfg, proposalErrCh) })
 	} else {
 		logger.InfoComponent("consensus", "Proposal monitor disabled - replica monitor will handle proposer counting")
 	}
 
 	logger.InfoComponent("system", "Initializing version monitor...")
-	go monitors.StartVersionMonitor(monitorCtx, cfg, versionErrCh)
+	safego.Go("system", func() { monitors.StartVersionMonitor(monitorCtx, cfg, versionErrCh) })
 
 	logger.InfoComponent("system", "Initializing update checker...")
-	go monitors.StartUpdateChecker(monitorCtx, cfg, updateErrCh)
+	safego.Go("system", func() { monitors.StartUpdateChecker(monitorCtx, cfg, updateErrCh) })
 
 	if cfg.EnableEVM {
 		// use EVM monitor that reads from evm_block_and_receipts
 		logger.InfoComponent("evm", "Initializing EVM monitor (using evm_block_and_receipts)...")
-		go monitors.StartEVMMonitor(monitorCtx, cfg, evmErrCh)
+		safego.Go("evm", func() { monitors.StartEVMMonitor(monitorCtx, cfg, evmErrCh) })
 
 		logger.InfoComponent("evm", "Initializing EVM Account monitor...")
-		go monitors.StartEVMAccountMonitor(monitorCtx, cfg, evmAccountErrCh)
+		safego.Go("evm", func() { monitors.StartEVMAccountMonitor(monitorCtx, cfg, evmAccountErrCh) })
 	}
 
 	logger.InfoComponent("consensus", "Initializing Validator Status monitor...")
-	monitors.StartValidatorStatusMonitor(ctx, cfg, validatorStatusErrCh)
+	monitors.StartValidatorStatusMonitor(monitorCtx, cfg, validatorStatusErrCh)
 
 	if cfg.EnableValidatorRTT {
 		logger.InfoComponent("consensus", "Initializing validator IP monitor...")
-		go monitors.StartValidatorIPMonitor(monitorCtx, cfg, validatorIPErrCh)
+		safego.Go("consensus", func() { monitors.StartValidatorIPMonitor(monitorCtx, cfg, validatorIPErrCh) })
 	} else {
 		logger.InfoComponent("consensus", "Validator IP monitor disabled")
 	}
 
 	logger.InfoComponent("consensus", "Initializing comprehensive consensus monitor...")
-	go monitors.StartConsensusMonitor(monitorCtx, &cfg, consensusErrCh)
+	safego.Go("consensus", func() { monitors.StartConsensusMonitor(monitorCtx, &cfg, consensusErrCh) })
 
 	// start validator latency monitor (only runs on validator nodes)
 	logger.InfoComponent("latency", "Initializing validator latency monitor...")
-	go monitors.StartValidatorLatencyMonitor(monitorCtx, &cfg, latencyErrCh)
+	safego.Go("latency", func() { monitors.StartValidatorLatencyMonitor(monitorCtx, &cfg, latencyErrCh) })
 
 	// start peer latency monitor if enabled (before gossip monitors so it can receive registrations)
 	var registerPeer func(string, peermon.PeerDirection)
@@ -94,38 +95,63 @@ func Start(ctx context.Context, cfg config.Config) {
 		logger.InfoComponent("peer-latency", "Initializing peer latency monitor...")
 		peerDataDir := filepath.Join(filepath.Dir(cfg.NodeHome), persistentFilesDir)
 		peerMon = peermon.New(peerDataDir)
+		peerMon.Load() // synchronously, before any producer registers
 		registerPeer = peerMon.Register
-		go peerMon.Start(monitorCtx, peerLatencyErrCh)
+		safego.Go("peer-latency", func() { peerMon.Start(monitorCtx, peerLatencyErrCh) })
 	} else {
 		logger.InfoComponent("peer-latency", "Peer latency monitor disabled")
 	}
 
 	// start gossip monitors (only run if respective log dirs exist)
 	logger.InfoComponent("gossip", "Initializing gossip monitor...")
-	go monitors.StartGossipMonitor(monitorCtx, &cfg, gossipErrCh, registerPeer)
+	safego.Go("gossip", func() { monitors.StartGossipMonitor(monitorCtx, &cfg, gossipErrCh, registerPeer) })
 
 	logger.InfoComponent("gossip", "Initializing gossip connections monitor...")
-	go monitors.StartGossipConnectionsMonitor(monitorCtx, &cfg, gossipConnErrCh, registerPeer)
+	safego.Go("gossip", func() { monitors.StartGossipConnectionsMonitor(monitorCtx, &cfg, gossipConnErrCh, registerPeer) })
 
-	if registerPeer != nil {
-		go monitors.StartOutboundPeersMonitor(monitorCtx, &cfg, registerPeer)
-		go monitors.StartParentPeerMonitor(monitorCtx, &cfg, peerMon.SetParentPeer)
+	if peerMon != nil {
+		outbound := monitors.NewOutboundPeersMonitor(peerMon.Register, peerMon.SuggestPort)
+		parent := monitors.NewParentPeerMonitor(peerMon.SetParentPeer)
+		safego.Go("gossip", func() { monitors.StartTCPTrafficMonitor(monitorCtx, &cfg, outbound, parent) })
 	}
 
 	if cfg.EnableReplicaMetrics {
 		logger.InfoComponent("replica", "Initializing replica commands monitor (streaming)...")
 		replicaMonitor := monitors.NewReplicaMonitor(cfg.ReplicaDataDir, cfg.ReplicaBufferSize)
-		go func() {
+		safego.Go("replica", func() {
 			if err := replicaMonitor.Start(monitorCtx); err != nil {
 				replicaErrCh <- err
 			}
-		}()
+		})
+	}
+
+	// node-host monitors: local files and procfs only, each behind its own flag
+	if cfg.EnableProcess {
+		safego.Go("process", func() { monitors.StartProcessMonitor(monitorCtx) })
+	}
+	if cfg.EnableChildStderr {
+		safego.Go("child-stderr", func() { monitors.StartChildStderrMonitor(monitorCtx, &cfg) })
+	}
+	if cfg.EnableVisor {
+		safego.Go("visor", func() { monitors.StartVisorMonitor(monitorCtx, &cfg) })
+	}
+	if cfg.EnableNodeState {
+		safego.Go("node-state", func() { monitors.StartNodeStateMonitor(monitorCtx, &cfg) })
+	}
+	if cfg.EnableDisk {
+		safego.Go("disk", func() { monitors.StartDiskMonitor(monitorCtx, &cfg) })
+	}
+	if cfg.EnableCritMsg {
+		safego.Go("crit-msg", func() { monitors.StartCritMsgMonitor(monitorCtx, &cfg) })
+	}
+	if cfg.EnableOperatorConfig && metrics.IsValidator() {
+		safego.Go("consensus", func() { monitors.StartOperatorConfigMonitor(monitorCtx, &cfg) })
 	}
 
 	logger.InfoComponent("system", "Exporter is now running")
 
 	// start memory monitoring
-	go metrics.StartMemoryMonitoring(monitorCtx)
+	safego.Go("system", func() { metrics.StartMemoryMonitoring(monitorCtx) })
 
 	// start metrics cleanup to prevent unbounded map growth
 	metrics.StartMetricsCleanup()

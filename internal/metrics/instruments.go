@@ -8,6 +8,9 @@ import (
 
 // metric instruments for hyperliquid-exporter
 var (
+	// exporter self-observability
+	HLExporterMonitorPanicsCounter api.Int64Counter
+
 	// counters consensus
 	HLConsensusProposerCounter api.Int64Counter
 	HLTimeoutRoundsCounter     api.Int64Counter
@@ -84,14 +87,15 @@ var (
 	HLEVMPriorityFeeHistogram api.Float64Histogram
 
 	// consensus monitoring metrics
-	HLConsensusVoteRoundGauge       api.Int64ObservableGauge
-	HLConsensusVoteTimeDiffGauge    api.Float64ObservableGauge
-	HLConsensusCurrentRoundGauge    api.Int64ObservableGauge
-	HLConsensusHeartbeatSentCounter api.Int64Counter
-	HLConsensusHeartbeatAckCounter  api.Int64Counter
-	HLConsensusHeartbeatDelayHist   api.Float64Histogram
-	HLConsensusConnectivityGauge    api.Float64ObservableGauge
-	HLConsensusHeartbeatStatusGauge api.Float64ObservableGauge
+	HLConsensusVoteRoundGauge               api.Int64ObservableGauge
+	HLConsensusVoteTimeDiffGauge            api.Float64ObservableGauge
+	HLConsensusCurrentRoundGauge            api.Int64ObservableGauge
+	HLConsensusHeartbeatSentCounter         api.Int64Counter
+	HLConsensusHeartbeatAckCounter          api.Int64Counter
+	HLConsensusHeartbeatDelayHist           api.Float64Histogram
+	HLConsensusHeartbeatAckAmbiguousCounter api.Int64Counter
+	HLConsensusConnectivityGauge            api.Float64ObservableGauge
+	HLConsensusHeartbeatStatusGauge         api.Float64ObservableGauge
 
 	// QC and TC metrics
 	HLConsensusQCSignaturesCounter    api.Int64Counter
@@ -121,8 +125,15 @@ var (
 	HLP2PChildPeerConnectionsGauge    api.Float64ObservableGauge
 
 	// P2P gossip connection metrics
-	HLP2PStreamConnectionsTotalCounter api.Int64Counter
-	HLP2PVerificationsTotalCounter     api.Int64Counter
+	HLP2PStreamConnectionsTotalCounter   api.Int64Counter
+	HLP2PVerificationsTotalCounter       api.Int64Counter
+	HLP2PGossipEventsTotalCounter        api.Int64Counter
+	HLP2PGossipUnknownEventsTotalCounter api.Int64Counter
+
+	// exporter source health (per consumed log stream)
+	HLExporterSourceUpGauge        api.Int64ObservableGauge
+	HLExporterSourceSampleAgeGauge api.Float64ObservableGauge
+	HLExporterParseErrorsCounter   api.Int64Counter
 
 	// Peer latency metrics
 	HLPeerLatencyGauge         api.Float64ObservableGauge
@@ -144,6 +155,8 @@ var (
 	HLNodeParentPeerDegradedTotalCounter api.Float64Counter
 	HLNodeParentPeerBlocksTotalCounter   api.Int64Counter
 	HLNodeParentPeerTrafficTotalCounter  api.Float64Counter
+	HLNodeParentPeerShareRatioGauge      api.Float64ObservableGauge
+	HLNodeParentPeerChallengerRatioGauge api.Float64ObservableGauge
 
 	// monitor health metrics
 	HLConsensusMonitorLastProcessedGauge api.Int64ObservableGauge
@@ -153,6 +166,14 @@ var (
 
 func createInstruments() error {
 	var err error
+
+	HLExporterMonitorPanicsCounter, err = meter.Int64Counter(
+		"hl_exporter_monitor_panics_total",
+		api.WithDescription("Panics recovered in exporter monitor goroutines"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create monitor panics counter: %w", err)
+	}
 
 	blockTimeBuckets := []float64{
 		10, 20, 30, 40, 50, 60, 70, 80, 90, 100,
@@ -693,6 +714,14 @@ func createInstruments() error {
 		return fmt.Errorf("failed to create consensus heartbeat ack counter: %w", err)
 	}
 
+	HLConsensusHeartbeatAckAmbiguousCounter, err = meter.Int64Counter(
+		"hl_consensus_heartbeat_ack_ambiguous_total",
+		api.WithDescription("Heartbeat acknowledgments dropped because more than one outgoing heartbeat matched their random ID and round"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create consensus heartbeat ack ambiguous counter: %w", err)
+	}
+
 	HLConsensusHeartbeatDelayHist, err = meter.Float64Histogram(
 		"hl_consensus_heartbeat_ack_delay_ms",
 		api.WithDescription("Distribution of heartbeat acknowledgment delays (ms)"),
@@ -921,6 +950,47 @@ func createInstruments() error {
 		return fmt.Errorf("failed to create verifications counter: %w", err)
 	}
 
+	HLP2PGossipEventsTotalCounter, err = meter.Int64Counter(
+		"hl_p2p_gossip_events_total",
+		api.WithDescription("Gossip connection events by fixed event type, counted after exporter start"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create gossip events counter: %w", err)
+	}
+
+	HLP2PGossipUnknownEventsTotalCounter, err = meter.Int64Counter(
+		"hl_p2p_gossip_unknown_events_total",
+		api.WithDescription("Gossip connection events whose tag is not in the exporter's allowlist (hl-node schema drift signal)"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create gossip unknown events counter: %w", err)
+	}
+
+	HLExporterSourceUpGauge, err = meter.Int64ObservableGauge(
+		"hl_exporter_source_up",
+		api.WithDescription("1 when the last poll of a consumed log stream resolved and read a file without error"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create source up gauge: %w", err)
+	}
+
+	HLExporterSourceSampleAgeGauge, err = meter.Float64ObservableGauge(
+		"hl_exporter_source_sample_age_seconds",
+		api.WithDescription("Seconds since the last well-formed record was read from a consumed log stream"),
+		api.WithUnit("s"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create source sample age gauge: %w", err)
+	}
+
+	HLExporterParseErrorsCounter, err = meter.Int64Counter(
+		"hl_exporter_parse_errors_total",
+		api.WithDescription("Records rejected by a stream parser, by stream and parse stage"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create parse errors counter: %w", err)
+	}
+
 	// Peer latency metrics
 	HLPeerLatencyGauge, err = meter.Float64ObservableGauge(
 		"hl_peer_latency_ms",
@@ -981,7 +1051,7 @@ func createInstruments() error {
 	// Parent peer metrics
 	HLNodeParentPeerGauge, err = meter.Float64ObservableGauge(
 		"hl_node_parent_peer",
-		api.WithDescription("Info-style gauge identifying the current parent peer (value=1)"),
+		api.WithDescription("Info-style gauge identifying the inferred parent peer (value=1): the endpoint dominating smoothed inbound tcp_traffic volume, not a protocol identity"),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create parent peer gauge: %w", err)
@@ -1059,5 +1129,21 @@ func createInstruments() error {
 		return fmt.Errorf("failed to create parent peer traffic volume total counter: %w", err)
 	}
 
-	return nil
+	HLNodeParentPeerShareRatioGauge, err = meter.Float64ObservableGauge(
+		"hl_node_parent_peer_share_ratio",
+		api.WithDescription("Parent peer's smoothed inbound traffic as a fraction of all smoothed inbound traffic (1 = sole source)"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create parent peer share ratio gauge: %w", err)
+	}
+
+	HLNodeParentPeerChallengerRatioGauge, err = meter.Float64ObservableGauge(
+		"hl_node_parent_peer_challenger_ratio",
+		api.WithDescription("Strongest non-parent peer's smoothed inbound traffic divided by the parent's (above 1.2 triggers a switch)"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create parent peer challenger ratio gauge: %w", err)
+	}
+
+	return createNodeInstruments()
 }

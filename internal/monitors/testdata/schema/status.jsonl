@@ -1,0 +1,3 @@
+["2025-01-01T00:00:00Z",{"disconnected_validators":[],"heartbeat_statuses":[]}]
+["2025-01-01T00:00:00Z",{"disconnected_validators":[["0xval1",[["0xpeer1",5]]]],"heartbeat_statuses":[]}]
+["2025-01-01T00:00:00Z",{"disconnected_validators":[],"heartbeat_statuses":[["0xval1",{"since_last_success":1.5,"last_ack_duration":0.3}]]}]

@@ -1,18 +1,16 @@
 package monitors
 
 import (
-	"bufio"
 	"context"
-	"io"
 	"maps"
-	"os"
 	"sync"
 	"time"
 
+	"github.com/validaoxyz/hyperliquid-exporter/internal/actiontypes"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/replica"
-	"github.com/validaoxyz/hyperliquid-exporter/internal/utils"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 )
 
 // replica verification stats
@@ -28,6 +26,8 @@ type ReplicaVerificationStats struct {
 }
 
 // replica monitor
+const replicaStream = "replica_cmds"
+
 type ReplicaMonitor struct {
 	parser     *replica.Parser
 	dataDir    string
@@ -58,17 +58,12 @@ func NewReplicaMonitor(dataDir string, bufferSize int) *ReplicaMonitor {
 func (m *ReplicaMonitor) Start(ctx context.Context) error {
 	logger.InfoComponent("replica", "Starting streaming replica monitor, dataDir: %s", m.dataDir)
 
-	go m.streamLoop(ctx)
+	safego.Go("replica", func() { m.streamLoop(ctx) })
 	return nil
 }
 
 // continuously streams from the latest replica file
 func (m *ReplicaMonitor) streamLoop(ctx context.Context) {
-	var currentFile string
-	var file *os.File
-	var fileReader *bufio.Reader
-	isFirstRun := true
-
 	// wait a short time at startup to ensure signer mappings are populated
 	// prevents early blocks from having incorrect validator labels
 	select {
@@ -78,135 +73,54 @@ func (m *ReplicaMonitor) streamLoop(ctx context.Context) {
 		logger.DebugComponent("replica", "Initial startup delay complete, beginning processing")
 	}
 
-	defer func() {
-		if file != nil {
-			_ = file.Close()
-		}
-	}()
+	blocksProcessed := 0
+	var totalParseTime float64
+	var parseCount int
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			// check for latest file
-			latestFile, err := utils.GetLatestFile(m.dataDir)
-			if err != nil {
-				logger.ErrorComponent("replica", "Error finding latest replica file: %v", err)
-				time.Sleep(1 * time.Second)
-				continue
+	t := streamTailer{
+		stream:    replicaStream,
+		component: "replica",
+		dir:       m.dataDir,
+		bufSize:   m.bufferSize,
+		idle: func() {
+			if blocksProcessed > 0 {
+				logger.DebugComponent("replica", "Processed %d blocks, waiting for more data", blocksProcessed)
+				blocksProcessed = 0
 			}
-
-			// if a new file is found, switch to it
-			if latestFile != currentFile {
-				logger.InfoComponent("replica", "Switching to replica file: %s", latestFile)
-
-				// clean up old file
-				if file != nil {
-					_ = file.Close()
-				}
-
-				file, err = os.Open(latestFile)
-				if err != nil {
-					logger.ErrorComponent("replica", "Error opening replica file: %v", err)
-					time.Sleep(1 * time.Second)
-					continue
-				}
-
-				if isFirstRun {
-					// on first run, seek to the end of the file
-					_, err = file.Seek(0, io.SeekEnd)
-					if err != nil {
-						logger.ErrorComponent("replica", "Error seeking to end of file: %v", err)
-						_ = file.Close()
-						file = nil
-						time.Sleep(1 * time.Second)
-						continue
-					}
-					logger.InfoComponent("replica", "First run: starting to stream from the end of file %s", latestFile)
-				} else {
-					logger.InfoComponent("replica", "Not first run: reading entire file %s", latestFile)
-				}
-
-				fileReader = bufio.NewReaderSize(file, m.bufferSize)
-				currentFile = latestFile
-				isFirstRun = false
+			if parseCount > 0 {
+				metrics.SetReplicaParseDuration(totalParseTime / float64(parseCount))
 			}
-
-			// read and process lines
-			if fileReader != nil {
-				blocksProcessed := 0
-				var totalParseTime float64
-				var parseCount int
-
-				for {
-					line, err := fileReader.ReadString('\n')
-					if err != nil {
-						if err == io.EOF {
-							// end of file reached, wait a bit before checking for more data
-							if blocksProcessed > 0 {
-								logger.DebugComponent("replica", "Processed %d blocks, waiting for more data", blocksProcessed)
-								blocksProcessed = 0
-							}
-							// update parse duration metric with average
-							if parseCount > 0 {
-								avgParseTime := totalParseTime / float64(parseCount)
-								metrics.SetReplicaParseDuration(avgParseTime)
-							}
-							time.Sleep(10 * time.Millisecond)
-							break // break from inner loop, continue outer loop
-						}
-						// for other errors, log and break to outer loop
-						logger.ErrorComponent("replica", "Error reading line: %v", err)
-						break
-					}
-
-					// skip empty lines
-					if len(line) == 0 || line == "\n" {
-						continue
-					}
-
-					// update line count
-					m.mu.Lock()
-					m.verificationStats.LinesProcessed++
-					m.mu.Unlock()
-
-					// parse the JSON line into a replica block using the parser's pool
-					parseStart := time.Now()
-					block, err := m.parser.ParseBlockFromLine([]byte(line))
-					parseTime := time.Since(parseStart).Seconds()
-					totalParseTime += parseTime
-					parseCount++
-					if err != nil {
-						logger.DebugComponent("replica", "Error parsing JSON: %v", err)
-						m.mu.Lock()
-						m.verificationStats.ParseErrors++
-						m.mu.Unlock()
-						continue
-					}
-
-					// extract metrics from the block
-					metrics, err := m.parser.ExtractMetrics(block)
-					if err != nil {
-						logger.DebugComponent("replica", "error extracting metrics: %v", err)
-						// return block to pool even on error
-						m.parser.ReturnBlock(block)
-						continue
-					}
-
-					// return block to pool after processing
-					m.parser.ReturnBlock(block)
-
-					// process the metrics
-					m.processBlock(metrics)
-					blocksProcessed++
-					if blocksProcessed%100 == 0 {
-						logger.InfoComponent("replica", "Processed %d blocks so far", blocksProcessed)
-					}
-				}
-			}
-		}
+		},
 	}
+	t.run(ctx, func(line []byte) error {
+		m.mu.Lock()
+		m.verificationStats.LinesProcessed++
+		m.mu.Unlock()
+
+		parseStart := time.Now()
+		block, err := m.parser.ParseBlockFromLine(line)
+		totalParseTime += time.Since(parseStart).Seconds()
+		parseCount++
+		if err != nil {
+			m.mu.Lock()
+			m.verificationStats.ParseErrors++
+			m.mu.Unlock()
+			return err
+		}
+
+		blockMetrics, err := m.parser.ExtractMetrics(block)
+		m.parser.ReturnBlock(block)
+		if err != nil {
+			return err
+		}
+
+		m.processBlock(blockMetrics)
+		blocksProcessed++
+		if blocksProcessed%100 == 0 {
+			logger.InfoComponent("replica", "Processed %d blocks so far", blocksProcessed)
+		}
+		return nil
+	})
 }
 
 // processes metrics from a single block
@@ -255,7 +169,7 @@ func (m *ReplicaMonitor) processBlock(block *replica.BlockMetrics) {
 
 	// update operation counters (new)
 	for actionType, count := range block.OperationCounts {
-		category := getCategoryForAction(actionType)
+		category := actiontypes.Category(actionType)
 		metrics.IncCoreOperationsTotal(actionType, category, int64(count))
 	}
 
@@ -303,52 +217,4 @@ func (m *ReplicaMonitor) GetVerificationStats() ReplicaVerificationStats {
 	maps.Copy(statsCopy.ActionCounts, m.verificationStats.ActionCounts)
 
 	return statsCopy
-}
-
-// returns the category for a given action type
-func getCategoryForAction(actionType string) string {
-	switch actionType {
-	// trading operations
-	case replica.ActionTypeOrder, replica.ActionTypeTwapOrder,
-		replica.ActionTypeCancel, replica.ActionTypeCancelByCloid,
-		replica.ActionTypeBatchModify, replica.ActionTypeModify,
-		replica.ActionTypeScheduleCancel,
-		"liquidate", "twapCancel":
-		return "trading"
-
-	// transfer operations
-	case replica.ActionTypeUsdTransfer, replica.ActionTypeSpotSend,
-		"usdSend", "spotDeploy", "withdraw3", "spotUser",
-		"vaultTransfer", "vaultDistribute", "subAccountTransfer",
-		"subAccountSpotTransfer", "cDeposit", "cWithdraw":
-		return "transfer"
-
-	// settings/account operations
-	case replica.ActionTypeUpdateLeverage, replica.ActionTypeApproveAgent,
-		replica.ActionTypeSetReferrer, replica.ActionTypeApproveBuilderFee,
-		"createSubAccount", "subAccountModify", "registerReferrer",
-		"linkStakingUser", "setDisplayName", "createVault",
-		"vaultModify", "updateIsolatedMargin", "topUpIsolatedOnlyMargin",
-		"convertToMultiSigUser", "multiSig":
-		return "settings"
-
-	// governance/system operations
-	case replica.ActionTypeTokenDelegate, replica.ActionTypeVoteAppHash,
-		"VoteEthDepositAction", "VoteEthFinalizedWithdrawalAction",
-		"VoteGlobalAction", "SetGlobalAction", "CSignerAction",
-		"ValidatorSignWithdrawalAction", "NetChildVaultPositionsAction":
-		return "governance"
-
-	// rewards/claiming
-	case replica.ActionTypeClaimRewards, "reserveRequestWeight":
-		return "rewards"
-
-	// evm operations
-	case replica.ActionTypeEvmRawTx, replica.ActionTypeEvmUserModify,
-		"evmUserSpotTransfer", "finalizeEvmContract":
-		return "evm"
-
-	default:
-		return "other"
-	}
 }

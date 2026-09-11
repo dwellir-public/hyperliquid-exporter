@@ -1,7 +1,6 @@
 package metrics
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -10,98 +9,94 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 )
 
-func setupCleanupTest(t *testing.T) {
+func resetLabeledState(t *testing.T) {
 	t.Helper()
-	metricsMutex.Lock()
-	labeledValues = make(map[api.Observable]map[string]labeledValue)
-	metricsMutex.Unlock()
-	t.Cleanup(func() {
+	reset := func() {
 		metricsMutex.Lock()
 		labeledValues = make(map[api.Observable]map[string]labeledValue)
+		lastVotes = make(map[string]labeledValue)
 		metricsMutex.Unlock()
-	})
-}
-
-// makeEntries creates n entries where addr-0 is the oldest and addr-(n-1) the newest.
-func makeEntries(n int) map[string]labeledValue {
-	base := time.Now().Add(-time.Duration(n) * time.Second)
-	m := make(map[string]labeledValue, n)
-	for i := range n {
-		k := fmt.Sprintf("addr-%d", i)
-		m[k] = labeledValue{
-			value:     float64(i),
-			labels:    []attribute.KeyValue{attribute.String("k", k)},
-			updatedAt: base.Add(time.Duration(i) * time.Second),
-		}
 	}
-	return m
+	reset()
+	t.Cleanup(reset)
 }
 
-func TestCleanupPrunes(t *testing.T) {
-	setupCleanupTest(t)
-	gauge := noop.Float64ObservableGauge{}
-
+func TestPruneStaleVotes(t *testing.T) {
+	resetLabeledState(t)
+	now := time.Now()
 	metricsMutex.Lock()
-	labeledValues[gauge] = makeEntries(250)
+	lastVotes["stale"] = labeledValue{updatedAt: now.Add(-2 * voteMaxAge)}
+	lastVotes["fresh"] = labeledValue{updatedAt: now}
 	metricsMutex.Unlock()
 
-	cleanupLabeledValues()
+	pruneStaleVotes(voteMaxAge)
 
 	metricsMutex.RLock()
 	defer metricsMutex.RUnlock()
-
-	if got := len(labeledValues[gauge]); got != 200 {
-		t.Fatalf("len after cleanup = %d, want 200", got)
+	if _, ok := lastVotes["stale"]; ok {
+		t.Error("stale vote not pruned")
 	}
-	// the 200 most recently updated entries (addr-50..addr-249) must survive
-	for i := 50; i < 250; i++ {
-		k := fmt.Sprintf("addr-%d", i)
-		if _, ok := labeledValues[gauge][k]; !ok {
-			t.Errorf("recent entry %s evicted", k)
-		}
+	if _, ok := lastVotes["fresh"]; !ok {
+		t.Error("fresh vote pruned")
 	}
 }
 
-func TestCleanupUnderLimit(t *testing.T) {
-	setupCleanupTest(t)
-	gauge := noop.Float64ObservableGauge{}
+func TestRemoveValidatorSeries(t *testing.T) {
+	resetLabeledState(t)
+	// distinct noop instruments so the two families are separate map keys
+	stake := &noop.Float64ObservableGauge{}
+	latency := &noop.Float64ObservableGauge{}
+	heartbeat := &noop.Float64ObservableGauge{}
+	savedStake, savedLatency, savedHB := HLConsensusValidatorStakeGauge, HLConsensusValidatorLatencyGauge, HLConsensusHeartbeatStatusGauge
+	HLConsensusValidatorStakeGauge, HLConsensusValidatorLatencyGauge, HLConsensusHeartbeatStatusGauge = stake, latency, heartbeat
+	t.Cleanup(func() {
+		HLConsensusValidatorStakeGauge, HLConsensusValidatorLatencyGauge, HLConsensusHeartbeatStatusGauge = savedStake, savedLatency, savedHB
+	})
 
+	entry := labeledValue{value: 1, labels: []attribute.KeyValue{attribute.String("validator", "0xAB")}}
 	metricsMutex.Lock()
-	labeledValues[gauge] = makeEntries(50)
+	labeledValues[stake] = map[string]labeledValue{"0xAB": entry, "0xcd": entry}
+	labeledValues[latency] = map[string]labeledValue{"0xab": entry, "0xcd": entry}
+	lastVotes["0xab"] = entry
+	labeledValues[heartbeat] = map[string]labeledValue{"0xab_since_last_success": entry, "0xcd_since_last_success": entry}
 	metricsMutex.Unlock()
 
-	cleanupLabeledValues()
-
+	RemoveValidatorLatencySeries("0xAB")
 	metricsMutex.RLock()
-	got := len(labeledValues[gauge])
+	if _, ok := labeledValues[latency]["0xab"]; ok {
+		t.Error("latency series not removed by lowercase key")
+	}
+	if _, ok := labeledValues[stake]["0xAB"]; !ok {
+		t.Error("stake series removed by latency-only call")
+	}
 	metricsMutex.RUnlock()
 
-	if got != 50 {
-		t.Errorf("len after cleanup = %d, want 50 (untouched)", got)
+	RemoveValidatorSeries("0xAB")
+	metricsMutex.RLock()
+	defer metricsMutex.RUnlock()
+	if _, ok := labeledValues[stake]["0xAB"]; ok {
+		t.Error("stake series not removed")
+	}
+	if _, ok := lastVotes["0xab"]; ok {
+		t.Error("vote entry not removed")
+	}
+	if _, ok := labeledValues[stake]["0xcd"]; !ok {
+		t.Error("unrelated validator removed")
+	}
+	if _, ok := labeledValues[heartbeat]["0xab_since_last_success"]; ok {
+		t.Error("heartbeat status series not removed")
+	}
+	if _, ok := labeledValues[heartbeat]["0xcd_since_last_success"]; !ok {
+		t.Error("unrelated heartbeat status removed")
 	}
 }
 
-func TestCleanupMultipleMetrics(t *testing.T) {
-	setupCleanupTest(t)
-	big := noop.Float64ObservableGauge{}
-	small := noop.Int64ObservableGauge{}
-
-	metricsMutex.Lock()
-	labeledValues[big] = makeEntries(300)
-	labeledValues[small] = makeEntries(50)
-	metricsMutex.Unlock()
-
-	cleanupLabeledValues()
-
-	metricsMutex.RLock()
-	bigLen := len(labeledValues[big])
-	smallLen := len(labeledValues[small])
-	metricsMutex.RUnlock()
-
-	if bigLen != 200 {
-		t.Errorf("big metric len = %d, want 200", bigLen)
+func TestGetValidatorName(t *testing.T) {
+	RegisterValidatorInfo("0xabc", "0xsigner", "Moniker")
+	if got := GetValidatorName("0xABC"); got != "Moniker" {
+		t.Errorf("GetValidatorName = %q, want Moniker", got)
 	}
-	if smallLen != 50 {
-		t.Errorf("small metric len = %d, want 50", smallLen)
+	if got := GetValidatorName("0xmissing"); got != "" {
+		t.Errorf("GetValidatorName for unknown = %q, want empty", got)
 	}
 }

@@ -1,23 +1,20 @@
 package monitors
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
-	"github.com/validaoxyz/hyperliquid-exporter/internal/utils"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 )
 
 func StartProposalMonitor(ctx context.Context, cfg config.Config, errCh chan<- error) {
-	go func() {
+	safego.Go("consensus", func() {
 		// skip if replica monitoring is enabled as it will handle proposer counting
 		if cfg.EnableReplicaMetrics {
 			// already logged in exporter.go, just return silently
@@ -35,79 +32,13 @@ func StartProposalMonitor(ctx context.Context, cfg config.Config, errCh chan<- e
 
 		logger.InfoComponent("consensus", "Proposal monitor started - tracking block proposers")
 
-		logsDir := filepath.Join(cfg.NodeHome, "data/replica_cmds")
-		var currentFile string
-		var openFile *os.File
-		var fileReader *bufio.Reader
-		isFirstRun := true
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				// check for new files
-				latestFile, err := utils.GetLatestFile(logsDir)
-				if err != nil {
-					errCh <- fmt.Errorf("error finding latest proposal log file: %w", err)
-					time.Sleep(1 * time.Second)
-					continue
-				}
-
-				// if a new file is found, switch to it
-				if latestFile != currentFile {
-					logger.InfoComponent("consensus", "Switching to new proposal log file: %s", latestFile)
-					if openFile != nil {
-						_ = openFile.Close()
-						openFile = nil
-						fileReader = nil
-					}
-					file, err := os.Open(latestFile)
-					if err != nil {
-						errCh <- fmt.Errorf("error opening new proposal log file: %w", err)
-						time.Sleep(1 * time.Second)
-						continue
-					}
-
-					if isFirstRun {
-						// on first run, seek to the end of the file
-						_, err = file.Seek(0, io.SeekEnd)
-						if err != nil {
-							errCh <- fmt.Errorf("error seeking to end of file: %w", err)
-							_ = file.Close()
-							time.Sleep(1 * time.Second)
-							continue
-						}
-						logger.InfoComponent("consensus", "First run: starting to stream from the end of file %s", latestFile)
-					} else {
-						logger.InfoComponent("consensus", "Not first run: reading entire file %s", latestFile)
-					}
-
-					openFile = file
-					fileReader = bufio.NewReader(file)
-					currentFile = latestFile
-					isFirstRun = false
-				}
-
-				// read and process lines
-				for {
-					line, err := fileReader.ReadString('\n')
-					if err != nil {
-						if err == io.EOF {
-							// end of file reached, wait a bit before checking for more data
-							time.Sleep(100 * time.Millisecond)
-							break
-						}
-						errCh <- fmt.Errorf("error reading from proposal log file: %w", err)
-						break
-					}
-					if err := parseProposalLine(ctx, line); err != nil {
-						errCh <- fmt.Errorf("error parsing proposal line: %w", err)
-					}
-				}
-			}
-		}
-	}()
+		// replica_cmds is also tailed by the replica monitor, which owns the
+		// envelope for that stream; this tailer reports no source health
+		t := streamTailer{component: "consensus", dir: filepath.Join(cfg.NodeHome, "data/replica_cmds"), pause: 100 * time.Millisecond}
+		t.run(ctx, func(line []byte) error {
+			return parseProposalLine(ctx, string(line))
+		})
+	})
 }
 
 func parseProposalLine(ctx context.Context, line string) error {

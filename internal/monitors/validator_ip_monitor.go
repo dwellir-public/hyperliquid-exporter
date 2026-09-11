@@ -15,6 +15,7 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
+	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/utils"
 )
 
@@ -56,7 +57,7 @@ func StartValidatorIPMonitor(ctx context.Context, cfg config.Config, errCh chan<
 	// create ABCI reader with 8MB buffer
 	reader := abci.NewReader(8)
 
-	go func() {
+	safego.Go("consensus", func() {
 		stateDir := filepath.Join(cfg.NodeHome, "data/periodic_abci_states")
 
 		// add directory check
@@ -70,7 +71,7 @@ func StartValidatorIPMonitor(ctx context.Context, cfg config.Config, errCh chan<
 		var lastAttempt time.Time
 
 		// start the ping monitoring in a separate goroutine
-		go monitorValidatorRTT(ctx, errCh)
+		safego.Go("consensus", func() { monitorValidatorRTT(ctx, errCh) })
 
 		// initial attempt
 		if err := processLatestState(ctx, stateDir, &currentFile, reader); err != nil {
@@ -99,11 +100,11 @@ func StartValidatorIPMonitor(ctx context.Context, cfg config.Config, errCh chan<
 				lastAttempt = time.Now()
 			}
 		}
-	}()
+	})
 }
 
 func processLatestState(ctx context.Context, stateDir string, currentFile *string, reader *abci.Reader) error {
-	latestFile, err := utils.GetLatestFile(stateDir)
+	latestFile, err := utils.LatestFile(stateDir)
 	if err != nil {
 		logger.ErrorComponent("consensus", "Error finding latest state file in dir %s: %v", stateDir, err)
 		return fmt.Errorf("error finding latest state file: %w", err)
@@ -172,7 +173,7 @@ func monitorValidatorRTT(ctx context.Context, errCh chan<- error) {
 		case <-ticker.C:
 			for _, validator := range getTopValidators(50) {
 				if data, exists := getValidatorData(validator); exists {
-					go measureRTT(ctx, validator, data.IP)
+					safego.Go("consensus", func() { measureRTT(ctx, validator, data.IP) })
 				}
 			}
 		}

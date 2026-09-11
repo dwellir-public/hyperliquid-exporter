@@ -1,0 +1,3 @@
+["2025-01-01T00:00:00Z",{"home_validator":"0xsigner123","round":42,"current_stakes":[["0xvalidator1","0xsigner1"],["0xvalidator2","0xsigner2"]]}]
+["2025-01-01T00:00:00Z",{"home_validator":"","round":10,"current_stakes":[]}]
+["2026-09-01T00:00:00Z",{"home_validator":"0xsigner1","round":42,"current_stakes":{"validator_to_stake":[["0xsigner1",100],["0xsigner2",50]]}}]

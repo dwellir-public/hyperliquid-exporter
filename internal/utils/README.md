@@ -1,5 +1,6 @@
 # utils
 
-Shared utility functions for file operations used across monitors.
+Shared file-resolution helpers used across monitors.
 
-Currently provides `GetLatestFile`, which walks a directory tree and returns the path to the most recently modified file.
+- `LatestFile(root)`: newest file under a date/hour/height-named tree, resolved by descending into the greatest-named entry at each level (`os.ReadDir`, no full walk).
+- `LatestFileCache`: rate-limits `LatestFile` for tailers that poll in tight EOF loops.

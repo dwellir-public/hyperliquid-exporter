@@ -49,7 +49,7 @@ func TestProcessGossipFile_IncomingRequest(t *testing.T) {
 	}
 
 	f := writeGossipFile(t, filepath.Join(m.gossipDir, "20260330"), lines...)
-	newOffset, err := m.processGossipFile(f, 0)
+	newOffset, err := m.processGossipFile(f, 0, false)
 	require.NoError(t, err)
 	assert.Greater(t, newOffset, int64(0))
 
@@ -76,7 +76,7 @@ func TestProcessGossipFile_IncomingRequestRegistersPeer(t *testing.T) {
 	}
 
 	f := writeGossipFile(t, filepath.Join(m.gossipDir, "20260330"), lines...)
-	_, err := m.processGossipFile(f, 0)
+	_, err := m.processGossipFile(f, 0, false)
 	require.NoError(t, err)
 
 	mu.Lock()
@@ -92,7 +92,7 @@ func TestProcessGossipFile_ChildPeersStatus(t *testing.T) {
 	}
 
 	f := writeGossipFile(t, filepath.Join(m.gossipDir, "20260330"), lines...)
-	_, err := m.processGossipFile(f, 0)
+	_, err := m.processGossipFile(f, 0, false)
 	require.NoError(t, err)
 
 	assert.Len(t, m.knownChildPeers, 2)
@@ -110,7 +110,7 @@ func TestProcessGossipFile_EmptyChildPeers(t *testing.T) {
 	}
 
 	f := writeGossipFile(t, filepath.Join(m.gossipDir, "20260330"), lines...)
-	_, err := m.processGossipFile(f, 0)
+	_, err := m.processGossipFile(f, 0, false)
 	require.NoError(t, err)
 	assert.Empty(t, m.knownChildPeers)
 }
@@ -126,12 +126,12 @@ func TestProcessGossipFile_OffsetTracking(t *testing.T) {
 	f := writeGossipFile(t, filepath.Join(m.gossipDir, "20260330"), lines...)
 
 	// first pass: read all lines
-	offset1, err := m.processGossipFile(f, 0)
+	offset1, err := m.processGossipFile(f, 0, false)
 	require.NoError(t, err)
 	assert.Greater(t, offset1, int64(0))
 
 	// second pass from same offset: no new data
-	offset2, err := m.processGossipFile(f, offset1)
+	offset2, err := m.processGossipFile(f, offset1, false)
 	require.NoError(t, err)
 	assert.Equal(t, offset1, offset2)
 
@@ -142,7 +142,7 @@ func TestProcessGossipFile_OffsetTracking(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fh.Close())
 
-	offset3, err := m.processGossipFile(f, offset2)
+	offset3, err := m.processGossipFile(f, offset2, false)
 	require.NoError(t, err)
 	assert.Greater(t, offset3, offset2)
 	assert.Contains(t, m.peerLastSeen, "10.0.0.5")
@@ -159,7 +159,7 @@ func TestProcessGossipFile_MalformedLines(t *testing.T) {
 	}
 
 	f := writeGossipFile(t, filepath.Join(m.gossipDir, "20260330"), lines...)
-	_, err := m.processGossipFile(f, 0)
+	_, err := m.processGossipFile(f, 0, false)
 	require.NoError(t, err)
 
 	// only the valid incoming request should be tracked
@@ -178,7 +178,7 @@ func TestProcessGossipFile_MixedEvents(t *testing.T) {
 	}
 
 	f := writeGossipFile(t, filepath.Join(m.gossipDir, "20260330"), lines...)
-	_, err := m.processGossipFile(f, 0)
+	_, err := m.processGossipFile(f, 0, false)
 	require.NoError(t, err)
 
 	// incoming peer tracked
@@ -201,7 +201,7 @@ func TestProcessGossipFile_ChildPeerStaleRemoval(t *testing.T) {
 	}
 
 	f := writeGossipFile(t, filepath.Join(m.gossipDir, "20260330"), lines...)
-	_, err := m.processGossipFile(f, 0)
+	_, err := m.processGossipFile(f, 0, false)
 	require.NoError(t, err)
 
 	// stale peer should be removed (zero time > 10 min ago)
@@ -219,7 +219,7 @@ func TestProcessGossipFile_PartialLineRetry(t *testing.T) {
 	partial := fmt.Sprintf(`["%s",["incoming request","192.168.108.167:57648",false]]`, recentTS(10))
 	require.NoError(t, os.WriteFile(f, []byte(partial), 0o644))
 
-	offset1, err := m.processGossipFile(f, 0)
+	offset1, err := m.processGossipFile(f, 0, false)
 	require.NoError(t, err)
 	assert.Zero(t, offset1)
 	assert.Empty(t, m.peerLastSeen)
@@ -230,7 +230,7 @@ func TestProcessGossipFile_PartialLineRetry(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, fh.Close())
 
-	offset2, err := m.processGossipFile(f, offset1)
+	offset2, err := m.processGossipFile(f, offset1, false)
 	require.NoError(t, err)
 	assert.Greater(t, offset2, offset1)
 	assert.Contains(t, m.peerLastSeen, "192.168.108.167")
@@ -243,13 +243,13 @@ func TestProcessGossipFile_TruncationResetsOffset(t *testing.T) {
 		fmt.Sprintf(`["%s",["incoming request","192.168.108.167:57648",false]]`, recentTS(30)),
 	)
 
-	offset1, err := m.processGossipFile(f, 0)
+	offset1, err := m.processGossipFile(f, 0, false)
 	require.NoError(t, err)
 	assert.Greater(t, offset1, int64(0))
 
 	require.NoError(t, os.WriteFile(f, fmt.Appendf(nil, `["%s",["incoming request","10.0.0.8:9999",false]]`+"\n", recentTS(5)), 0o644))
 
-	offset2, err := m.processGossipFile(f, offset1)
+	offset2, err := m.processGossipFile(f, offset1, false)
 	require.NoError(t, err)
 	assert.Greater(t, offset2, int64(0))
 	assert.Contains(t, m.peerLastSeen, "10.0.0.8")
@@ -263,8 +263,50 @@ func TestProcessGossipFile_ChildPeerVerificationFlip(t *testing.T) {
 		fmt.Sprintf(`["%s",["child_peers status",[[{"Ip":"192.168.108.236"},{"verified":false,"connection_count":1}]]]]`, recentTS(10)),
 	)
 
-	_, err := m.processGossipFile(f, 0)
+	_, err := m.processGossipFile(f, 0, false)
 	require.NoError(t, err)
 	assert.Contains(t, m.knownChildPeers, "192.168.108.236")
 	assert.False(t, m.knownChildPeers["192.168.108.236"].verified)
+}
+
+func TestProcessGossipFile_ChildPeersLastSnapshotWins(t *testing.T) {
+	m := newTestGossipMonitor(t)
+
+	lines := []string{
+		fmt.Sprintf(`["%s",["child_peers status",[[{"Ip":"10.0.0.1"},{"verified":true,"connection_count":1}],[{"Ip":"10.0.0.2"},{"verified":true,"connection_count":1}]]]]`, recentTS(20)),
+		fmt.Sprintf(`["%s",["child_peers status",[[{"Ip":"10.0.0.3"},{"verified":false,"connection_count":1}]]]]`, recentTS(10)),
+	}
+
+	f := writeGossipFile(t, filepath.Join(m.gossipDir, "20260330"), lines...)
+	_, err := m.processGossipFile(f, 0, false)
+	require.NoError(t, err)
+
+	// all three are known; only the last snapshot's peer is current
+	assert.Len(t, m.knownChildPeers, 3)
+	assert.False(t, m.knownChildPeers["10.0.0.3"].verified)
+}
+
+func TestProcessGossipFile_SeedingTracksPeersWithoutCounting(t *testing.T) {
+	m := newTestGossipMonitor(t)
+	lines := []string{
+		fmt.Sprintf(`["%s",["incoming request","192.168.108.167:57648",false]]`, recentTS(10)),
+	}
+	f := writeGossipFile(t, filepath.Join(m.gossipDir, "20260330"), lines...)
+	_, err := m.processGossipFile(f, 0, true)
+	require.NoError(t, err)
+	assert.Contains(t, m.peerLastSeen, "192.168.108.167")
+}
+
+func TestProcessGossipFile_MalformedSnapshotKeepsState(t *testing.T) {
+	m := newTestGossipMonitor(t)
+	lines := []string{
+		fmt.Sprintf(`["%s",["child_peers status",[[{"Ip":"10.0.0.1"},{"verified":true,"connection_count":1}]]]]`, recentTS(20)),
+		fmt.Sprintf(`["%s",["child_peers status","not-a-list"]]`, recentTS(10)),
+	}
+	f := writeGossipFile(t, filepath.Join(m.gossipDir, "20260330"), lines...)
+	_, err := m.processGossipFile(f, 0, false)
+	require.NoError(t, err)
+	require.Contains(t, m.knownChildPeers, "10.0.0.1")
+	// still connected: the malformed line must not have marked it absent
+	assert.True(t, m.knownChildPeers["10.0.0.1"].lastSeen.After(time.Now().Add(-time.Minute)))
 }

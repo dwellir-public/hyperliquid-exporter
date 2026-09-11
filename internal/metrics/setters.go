@@ -130,12 +130,7 @@ func IncrementProposerCounter(proposer string) {
 		logger.Debug("No mapping found for signer %s, using signer as validator", signer)
 	}
 
-	// get the val moniker
 	name := GetValidatorName(validator)
-	if name == "" {
-		// if we can't find a name, try with the original case
-		name = GetValidatorName(strings.ToLower(validator))
-	}
 
 	// now register metric atomically
 	metricsMutex.Lock()
@@ -711,28 +706,84 @@ func SetValidatorLastVoteRound(validator string, round int64) {
 	}
 }
 
-func SetValidatorVoteTimeDiff(validator string, seconds float64) {
+// records the log timestamp of the latest vote observed from a validator.
+// hl_consensus_vote_time_diff_seconds is computed as now minus this at scrape.
+func SetValidatorLastVote(validator string, at time.Time) {
 	labels := getValidatorLabels(validator)
-
-	// extract the actual validator address from the labels for map key
-	var validatorAddr string
-	for _, label := range labels {
-		if label.Key == "validator" {
-			validatorAddr = label.Value.AsString()
-			break
-		}
-	}
+	validatorAddr := labelValue(labels, "validator")
 
 	metricsMutex.Lock()
 	defer metricsMutex.Unlock()
+	lastVotes[validatorAddr] = labeledValue{updatedAt: at, labels: labels}
+}
 
-	if _, exists := labeledValues[HLConsensusVoteTimeDiffGauge]; !exists {
-		labeledValues[HLConsensusVoteTimeDiffGauge] = make(map[string]labeledValue)
+// drops vote entries silent for longer than maxAge
+func pruneStaleVotes(maxAge time.Duration) {
+	cutoff := time.Now().Add(-maxAge)
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	for addr, v := range lastVotes {
+		if v.updatedAt.Before(cutoff) {
+			delete(lastVotes, addr)
+		}
 	}
-	labeledValues[HLConsensusVoteTimeDiffGauge][validatorAddr] = labeledValue{
-		updatedAt: time.Now(),
-		value:     seconds,
-		labels:    labels,
+}
+
+func labelValue(labels []attribute.KeyValue, key attribute.Key) string {
+	for _, l := range labels {
+		if l.Key == key {
+			return l.Value.AsString()
+		}
+	}
+	return ""
+}
+
+// per-validator families keyed by validator address
+var validatorLatencyFamilies = func() []api.Observable {
+	return []api.Observable{
+		HLConsensusValidatorLatencyGauge,
+		HLConsensusValidatorLatencyRoundGauge,
+		HLConsensusValidatorLatencyEMAGauge,
+	}
+}
+
+var validatorFamilies = func() []api.Observable {
+	return append([]api.Observable{
+		HLConsensusValidatorStakeGauge,
+		HLConsensusValidatorJailedStatus,
+		HLConsensusValidatorActiveStatus,
+		HLConsensusValidatorRTTGauge,
+		HLConsensusQCParticipationGauge,
+		HLConsensusVoteRoundGauge,
+	}, validatorLatencyFamilies()...)
+}
+
+// removes every per-validator series for a validator that left the set
+func RemoveValidatorSeries(validator string) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	removeValidatorKeys(validator, validatorFamilies())
+	delete(lastVotes, validator)
+	delete(lastVotes, strings.ToLower(validator))
+	// heartbeat status is keyed "<validator>_<status_type>"
+	for key := range labeledValues[HLConsensusHeartbeatStatusGauge] {
+		if addr, _, ok := strings.Cut(key, "_"); ok && strings.EqualFold(addr, validator) {
+			delete(labeledValues[HLConsensusHeartbeatStatusGauge], key)
+		}
+	}
+}
+
+// removes only the latency series for a validator whose latency directory is gone
+func RemoveValidatorLatencySeries(validator string) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	removeValidatorKeys(validator, validatorLatencyFamilies())
+}
+
+func removeValidatorKeys(validator string, families []api.Observable) {
+	for _, fam := range families {
+		delete(labeledValues[fam], validator)
+		delete(labeledValues[fam], strings.ToLower(validator))
 	}
 }
 
@@ -830,13 +881,17 @@ func IncrementHeartbeatAcksReceived(fromValidator, toValidator string) {
 	))
 }
 
-func RecordHeartbeatAckDelay(_, _ string, delayMs float64) {
-	ctx := context.Background()
+// RecordHeartbeatAckDelay observes one matched ack delay. The histogram is
+// unlabeled on purpose: per-pair buckets would be quadratic in the validator
+// set, and hl_consensus_heartbeat_ack_received_total already carries the pair.
+func RecordHeartbeatAckDelay(delayMs float64) {
 	if HLConsensusHeartbeatDelayHist != nil {
-		// record without labels to reduce cardinality
-		// the histogram tracks the distribution of all heartbeat delays across the network
-		HLConsensusHeartbeatDelayHist.Record(ctx, delayMs)
+		HLConsensusHeartbeatDelayHist.Record(context.Background(), delayMs)
 	}
+}
+
+func IncrementHeartbeatAckAmbiguous() {
+	HLConsensusHeartbeatAckAmbiguousCounter.Add(context.Background(), 1)
 }
 
 func SetValidatorConnectivity(validator, peer string, connected float64) {
@@ -1294,6 +1349,47 @@ func IncrementVerifications(peerIP string) {
 		api.WithAttributes(attribute.String("peer_ip", peerIP)))
 }
 
+func IncrementGossipEvent(eventType string) {
+	HLP2PGossipEventsTotalCounter.Add(sharedCtx, 1,
+		api.WithAttributes(attribute.String("event_type", eventType)))
+}
+
+func IncrementGossipUnknownEvent() {
+	HLP2PGossipUnknownEventsTotalCounter.Add(sharedCtx, 1)
+}
+
+// Source health envelope, one series per consumed log stream
+
+func IncrementParseErrors(stream, stage string) {
+	HLExporterParseErrorsCounter.Add(sharedCtx, 1,
+		api.WithAttributes(attribute.String("stream", stream), attribute.String("stage", stage)))
+}
+
+func SetSourceUp(stream string, up bool) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	if _, exists := labeledValues[HLExporterSourceUpGauge]; !exists {
+		labeledValues[HLExporterSourceUpGauge] = make(map[string]labeledValue)
+	}
+	v := 0.0
+	if up {
+		v = 1
+	}
+	labeledValues[HLExporterSourceUpGauge][stream] = labeledValue{
+		updatedAt: time.Now(),
+		value:     v,
+		labels:    []attribute.KeyValue{attribute.String("stream", stream)},
+	}
+}
+
+// records that a well-formed record was read from stream at the given time;
+// hl_exporter_source_sample_age_seconds is derived from it at scrape
+func MarkSourceSample(stream string, at time.Time) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	sourceSamples[stream] = at
+}
+
 // Peer latency setters
 
 func SetPeerLatency(peerIP, direction string, latencyMs float64) {
@@ -1502,4 +1598,20 @@ func IncrementParentPeerBlocks(ip string) {
 func AddParentPeerTrafficVolume(ip string, v float64) {
 	HLNodeParentPeerTrafficTotalCounter.Add(sharedCtx, v,
 		api.WithAttributes(attribute.String("peer_ip", ip)))
+}
+
+func SetParentPeerRatios(share, challenger float64) {
+	metricsMutex.Lock()
+	defer metricsMutex.Unlock()
+	currentValues[HLNodeParentPeerShareRatioGauge] = share
+	currentValues[HLNodeParentPeerChallengerRatioGauge] = challenger
+}
+
+// IncMonitorPanic counts a recovered panic attributed to a monitor goroutine.
+func IncMonitorPanic(monitor string) {
+	if HLExporterMonitorPanicsCounter == nil {
+		return
+	}
+	HLExporterMonitorPanicsCounter.Add(context.Background(), 1,
+		api.WithAttributes(attribute.String("monitor", monitor)))
 }

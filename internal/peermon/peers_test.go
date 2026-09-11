@@ -25,16 +25,26 @@ func TestPeerSet_Register(t *testing.T) {
 func TestPeerSet_RegisterRejectsInvalidIP(t *testing.T) {
 	ps := NewPeerSet(t.TempDir())
 
-	for _, bad := range []string{"", "not-an-ip", "10.0.0.1:4000", "10.0.0.1:port", "abc:def"} {
+	for _, bad := range []string{"", "not-an-ip", "10.0.0.1:4000", "10.0.0.1:port", "abc:def", "127.0.0.1", "::1", "0.0.0.0", "169.254.1.1", "224.0.0.1"} {
 		_, evicted := ps.Register(bad, Outbound)
 		assert.False(t, evicted, "should not evict for invalid IP %q", bad)
 	}
 	assert.Equal(t, 0, ps.Len())
 
-	// Valid IPs should still work
+	// Valid IPs should still work. The IPv6 peer is a public anycast address,
+	// not 2001:db8::/32: hosts (CI runners included) can bind documentation
+	// addresses, and validPeerIP rejects the host's own.
 	_, _ = ps.Register("10.0.0.1", Outbound)
-	_, _ = ps.Register("::1", Outbound)
+	_, _ = ps.Register("2606:4700:4700::1111", Outbound)
 	assert.Equal(t, 2, ps.Len())
+}
+
+func TestPeerSet_RegisterRejectsOwnAddresses(t *testing.T) {
+	ps := NewPeerSet(t.TempDir())
+	for ip := range localAddrs() {
+		_, _ = ps.Register(ip, Outbound)
+	}
+	assert.Equal(t, 0, ps.Len())
 }
 
 func TestPeerSet_RegisterUpdatesLastSeen(t *testing.T) {
@@ -170,7 +180,7 @@ func TestPeerSet_LoadLegacyJSONWithoutPort(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "peers.json")
 	require.NoError(t, os.WriteFile(path, []byte(`[
-  {"ip":"10.0.0.1","last_seen":"2026-01-01T00:00:00Z"}
+  {"ip":"10.0.0.1","last_seen":"`+time.Now().Format(time.RFC3339)+`"}
 ]`), 0o644))
 
 	ps := NewPeerSet(dir)
@@ -286,4 +296,55 @@ func TestPeerSet_ExpireStale(t *testing.T) {
 
 	// nothing left to expire
 	assert.Empty(t, ps.ExpireStale(now))
+}
+
+func TestPeerSet_LoadSkipsInvalidAndExpired(t *testing.T) {
+	dir := t.TempDir()
+	stale := time.Now().Add(-2 * peerTTL).Format(time.RFC3339)
+	fresh := time.Now().Format(time.RFC3339)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "peers.json"), []byte(`[
+  {"ip":"10.0.0.1","last_seen":"`+fresh+`"},
+  {"ip":"not-an-ip","last_seen":"`+fresh+`"},
+  {"ip":"10.0.0.2","last_seen":"`+stale+`"}
+]`), 0o644))
+
+	ps := NewPeerSet(dir)
+	require.NoError(t, ps.Load())
+	require.Equal(t, 1, ps.Len())
+	assert.Equal(t, "10.0.0.1", ps.All()[0].IP)
+}
+
+func TestPeerSet_LoadDoesNotClobberLiveEntry(t *testing.T) {
+	dir := t.TempDir()
+	old := time.Now().Add(-time.Hour)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "peers.json"), []byte(`[
+  {"ip":"10.0.0.1","port":4005,"directions":{"outbound":true},"was_parent":true,"last_seen":"`+old.Format(time.RFC3339)+`"}
+]`), 0o644))
+
+	ps := NewPeerSet(dir)
+	_, _ = ps.Register("10.0.0.1", Inbound) // producer got there first
+	require.NoError(t, ps.Load())
+
+	peers := ps.All()
+	require.Len(t, peers, 1)
+	p := peers[0]
+	assert.True(t, p.LastSeen.After(old), "fresh registration kept")
+	assert.True(t, p.Directions[Inbound], "live direction kept")
+	assert.True(t, p.Directions[Outbound], "persisted direction merged")
+	assert.True(t, p.WasParent)
+	assert.Equal(t, 4005, p.Port, "persisted port adopted when live entry had none")
+}
+
+func TestPeerSet_SuggestPortOnlyWhenUnknown(t *testing.T) {
+	ps := NewPeerSet(t.TempDir())
+	ps.SuggestPort("10.0.0.1", 4001) // unknown peer: no-op
+	assert.Equal(t, 0, ps.Len())
+
+	_, _ = ps.Register("10.0.0.1", Inbound)
+	ps.SuggestPort("10.0.0.1", 4001)
+	assert.Equal(t, 4001, ps.All()[0].Port)
+
+	ps.UpdatePort("10.0.0.1", 4007) // proven by a probe
+	ps.SuggestPort("10.0.0.1", 4001)
+	assert.Equal(t, 4007, ps.All()[0].Port, "a suggestion never overrides a proven port")
 }

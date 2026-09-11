@@ -3,6 +3,8 @@ package monitors
 import (
 	"testing"
 	"time"
+
+	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
 )
 
 func resetEVMGlobals(t *testing.T) {
@@ -83,6 +85,25 @@ func TestProcessBlockData_HighGas(t *testing.T) {
 	}
 	if blockType != "high" {
 		t.Errorf("expected blockType 'high', got %q", blockType)
+	}
+}
+
+func TestProcessEVMLine_ZonelessTimestampSetsHighGasTime(t *testing.T) {
+	resetEVMGlobals(t)
+
+	// hl-node writes the line timestamp without a zone suffix
+	line := `["2026-09-11T08:59:02.559513359",{"block":{"High":{"header":{"header":{"number":"0xc8","gasLimit":"0x1c9c380","gasUsed":"0xe4e1c0"}},"body":{"transactions":[]}}}}]`
+	if err := processEVMBlockAndReceiptsLine(line); err != nil {
+		t.Fatalf("processEVMBlockAndReceiptsLine() error: %v", err)
+	}
+
+	got, ok := metrics.Int64GaugeValue(metrics.HLEVMLastHighGasBlockTime)
+	if !ok {
+		t.Fatal("hl_evm_last_high_gas_block_time not set")
+	}
+	want := time.Date(2026, 9, 11, 8, 59, 2, 559513359, time.UTC).Unix()
+	if got != want {
+		t.Errorf("hl_evm_last_high_gas_block_time = %d, want %d", got, want)
 	}
 }
 
@@ -244,5 +265,34 @@ func TestProcessEVMBlockAndReceiptsLine(t *testing.T) {
 				t.Errorf("processEVMBlockAndReceiptsLine() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestProcessBlockData_SmallGas(t *testing.T) {
+	resetEVMGlobals(t)
+	orig := blockTypeMetricsEnabled
+	blockTypeMetricsEnabled = true
+	t.Cleanup(func() { blockTypeMetricsEnabled = orig })
+
+	block := map[string]any{
+		"block": map[string]any{
+			"Small": map[string]any{
+				"header": map[string]any{
+					"header": map[string]any{
+						"number":   "0xc9",
+						"gasLimit": "0x2dc6c0", // 3_000_000
+						"gasUsed":  "0x1e8480", // 2_000_000
+					},
+				},
+				"body": map[string]any{"transactions": []any{}},
+			},
+		},
+	}
+	blockType, err := processBlockData(block, time.Time{})
+	if err != nil {
+		t.Fatalf("processBlockData() error: %v", err)
+	}
+	if blockType != "small" {
+		t.Errorf("expected blockType 'small', got %q", blockType)
 	}
 }

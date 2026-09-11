@@ -86,6 +86,14 @@ func main() {
 	enableReplicaMetrics := startCmd.Bool("replica-metrics", false, "Enable replica commands transaction metrics")
 	enableValidatorRTT := startCmd.Bool("validator-rtt", false, "Enable validator RTT monitoring")
 	enablePeerLatency := startCmd.Bool("peer-latency", false, "Enable peer latency monitoring")
+	enableProcess := startCmd.Bool("process-metrics", true, "hl-node and hl-visor liveness and resource usage from /proc")
+	enableChildStderr := startCmd.Bool("child-stderr-metrics", true, "hl-visor child crash artifacts under data/visor_child_stderr")
+	enableVisor := startCmd.Bool("visor-metrics", true, "hl-visor sync state from visor_abci_state.json")
+	enableNodeState := startCmd.Bool("node-state-metrics", true, "Persisted checkpoint and freeze heights under hyperliquid_data")
+	enableDisk := startCmd.Bool("disk-metrics", true, "NODE_HOME size per subdirectory and filesystem capacity")
+	enableOperatorConfig := startCmd.Bool("operator-config-metrics", true, "Operator config presence, age and jailing threshold (validator nodes only)")
+	enableCritMsg := startCmd.Bool("crit-msg-metrics", true, "bug! and crit! counters and top crit locations from crit_msg_stats")
+	enableBinaryMetrics := startCmd.Bool("binary-metrics", false, "Compare the local hl-visor against the published one every 30 min (hl_software_up_to_date; downloads the binary when it changes)")
 
 	if err := startCmd.Parse(os.Args[2:]); err != nil {
 		fmt.Fprintf(os.Stderr, "error parsing flags: %v\n", err)
@@ -119,6 +127,14 @@ func main() {
 		EVMBlockTypeMetrics:  *enableEVM, // Always enable block type metrics when EVM is enabled
 		EnableValidatorRTT:   enableValidatorRTT,
 		EnablePeerLatency:    enablePeerLatency,
+		EnableProcess:        *enableProcess,
+		EnableChildStderr:    *enableChildStderr,
+		EnableVisor:          *enableVisor,
+		EnableNodeState:      *enableNodeState,
+		EnableDisk:           *enableDisk,
+		EnableOperatorConfig: *enableOperatorConfig,
+		EnableCritMsg:        *enableCritMsg,
+		EnableBinaryMetrics:  *enableBinaryMetrics,
 	}
 
 	cfg := config.LoadConfig(flags)

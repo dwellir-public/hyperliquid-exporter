@@ -238,6 +238,7 @@ Also replace `getLatestHourlyFile` in `ours:internal/monitors/gossip_monitor.go:
 - Upstream: `2cb58cd`, `c792055`, `up:internal/monitors/stream.go`.
 - Ours: `readCommittedLines` at `ours:internal/monitors/log_tail.go:14` handles partials correctly, but `consensus_monitor.go:226-256`, `block_monitor.go`, `evm_monitor.go`, `replica_monitor.go`, `proposal_monitor.go`, `round_advance_monitor.go` bypass it with raw `ReadString('\n')` and discard the partial on EOF while the offset has advanced. One lost line per file boundary.
 - Change: retrofit `readCommittedLines` into all six. No upstream code needed.
+- Done in phase 6 as `streamTailer` in `log_tail.go`: one tight-loop tailer for the seven EOF-loop call sites (block fast, slow and legacy, consensus, status, replica, EVM, proposal) that holds a trailing fragment until its newline arrives, drains the old file at rollover, and reports the source-health envelope. It was pulled into phase 6 because a parse-error counter on those streams is meaningless while torn lines are counted as parse errors.
 
 ### 3.4 Per-validator gauges never reconciled
 
@@ -269,6 +270,7 @@ Also replace `getLatestHourlyFile` in `ours:internal/monitors/gossip_monitor.go:
 - Ours: `map[float64]heartbeatInfo` keyed on random ID only at `ours:internal/monitors/consensus_monitor.go:29-30,55,86,339`; `RecordHeartbeatAckDelay` at `setters.go:841` ignores both validator arguments.
 - Change: port the idea (key on `{randomID, round}`, drop on ambiguity), not the diff. The data structures have diverged too far for line-level porting. Add `hl_consensus_heartbeat_ack_ambiguous_total`.
 - Test: fixture with two outgoing heartbeats sharing a random ID in different rounds and one ack each; expect two distinct delays keyed to the right validator. A second fixture with an ack matching both expects zero delays and the ambiguity counter at 1.
+- Done in phase 6. Key is `{randomID, round}`; an ack without a round joins only when the random ID is unique. The responder is the wrapper `sender`/`source`; the ack's own `validator` field is decoded but not used for identity because it is abbreviated on current builds. Upstream's abbreviated-identity reconciliation and `normalizeWireAddress` were not ported. The histogram stays unlabeled; the per-pair counter now carries the correct origin.
 
 ---
 
@@ -396,7 +398,9 @@ Nothing to take. We are on Go 1.26.7, upstream on 1.25.13. Upstream is one point
 
 **Goal:** keep up with upstream and the hl-node log surface without repeating this review from scratch.
 
-### 7.1 `docs/routines/upstream-sync.md`
+### 7.1 `docs/operations/upstream-sync.md`
+
+Done in phase 6. The repo's docs layout puts runbooks under `docs/operations/`, not `docs/routines/`.
 
 Monthly, or on any upstream tag:
 
@@ -407,7 +411,9 @@ Monthly, or on any upstream tag:
 
 Seed the log table with `b150dcc` (v4.1.1, reviewed 2026-09-10).
 
-### 7.2 `docs/routines/hl-node-schema-watch.md`
+### 7.2 `docs/operations/hl-node-schema-watch.md`
+
+Done in phase 6. Envelope on the block, consensus, status, validator status, replica and EVM streams; `TestSchemaFixtures` over `internal/monitors/testdata/schema/` (committed, constructed from the inline test fixtures since no live pull was available) and `testdata/live/` (gitignored). Live samples from a mainnet and a validator node are still owed; see Open verification debt.
 
 The hl-node log surface changes without notice (`current_stakes`, round-advance reason, gossip payloads, new action types, all within six months). Routine on each hl-node release:
 
@@ -420,7 +426,7 @@ The hl-node log surface changes without notice (`current_stakes`, round-advance 
 
 - Document every metric ported under an upstream name in the metrics doc with its upstream origin. `BREAKING_CHANGES.md` is only for renames of existing metrics, of which this plan has none.
 - `docs/metrics-overview.md` stays hand-written (6.5 dropped).
-- Note in `README.md` that the fork is intentionally divergent and point to this plan and the routines.
+- Note in `README.md` that the fork is intentionally divergent and point to this plan and the routines. Done in phase 6.
 
 ---
 
@@ -431,7 +437,7 @@ Tier 0 to 3 (new): `internal/exporter/safego.go`, `internal/monitors/safego.go`,
 Tier 4 (modify): `internal/monitors/log_tail.go`, `gossip_monitor.go`, `gossip_connections_monitor.go`, `outbound_peers_monitor.go`, `parent_peer_monitor.go`, `parent_quality.go`, `internal/peermon/prober.go`, `internal/exporter/exporter.go`.
 Tier 5 (new): one file per monitor under `internal/monitors/`, instrument declarations in `internal/metrics/instruments.go`, wiring in `internal/exporter/exporter.go`, flags in `internal/config/config.go` and `cmd/hyperliquid-exporter/main.go`.
 Tier 6: `.github/workflows/ci-tests.yml`, `release.yml`.
-Tier 7 (new): `docs/routines/upstream-sync.md`, `docs/routines/hl-node-schema-watch.md`, `internal/monitors/testdata/schema/`; modify `README.md`, `docs/metrics-overview.md`.
+Tier 7 (new): `docs/operations/upstream-sync.md`, `docs/operations/hl-node-schema-watch.md`, `internal/monitors/testdata/schema/`, `internal/monitors/schema_test.go`; modify `README.md`, `docs/metrics-overview.md`, `log_tail.go` and the seven tailing monitors (3.3).
 
 ## Implementation Phases
 
@@ -444,7 +450,7 @@ Phases intentionally cut across tiers. Tiers rank items by severity and category
 3. **Metric correctness (done, `42b119e`):** 3.1, 3.2, 3.5, 1.5, 3.4, then 2.3. Not verified on a live node.
 4. **Peer quality (done, `28c558d`):** 4.4, 4.5, 4.6, rest of 4.7, 1.8. Not verified on a live node.
 5. **New monitors (done, `6911bde`):** Tier 5 ranks 1 to 5 as six monitors (visor and node_state each got a flag). Charm flags are a follow-up. Not verified on a live node.
-6. **Infra and routines (in progress):** 6.1 done, 6.2 narrowed, 6.3 deferred, 6.4 and 6.5 dropped (see Decisions). Tier 7. 3.7, 3.8, 2.4 and Tier 5 ranks 6 to 10 as capacity allows.
+6. **Infra and routines (in progress):** 6.1 and 6.2 done (`2e0bc49`), 6.3 deferred, 6.4 and 6.5 dropped (see Decisions). Tier 7 and 3.3 done. 3.8 done. Remaining as capacity allows: 3.7, 2.4, Tier 5 ranks 6 to 10.
 
 ## Handoff
 
@@ -458,7 +464,7 @@ Read this before starting phase 6. Everything above the phase list is still the 
 - Latest-file lookup is `utils.LatestFile(root)`; tight EOF loops use `utils.NewLatestFileCache(root, latestFileRescan)`. Do not reintroduce `filepath.Walk`.
 - Polling monitors keep their position in a `tailState` and read through `tailState.poll`; startup seeding passes `seeding=true` to suppress counters, including parse-error counters. `tcp_traffic` is read once by `TCPTrafficMonitor` and fanned out to `tcpTrafficConsumer` implementations (`onRecord`, `onPoll`); add a consumer rather than a second tailer.
 - Shared parse helpers live in `internal/monitors/parse_helpers.go` (`unmarshalRequiredJSON`, `parseVisorTime`, `rawJSONArray`, `rawJSONObject`).
-- Every consumed source reports `metrics.SetSourceUp(stream, bool)`, `metrics.MarkSourceSample(stream, at)` on a good record, `metrics.IncrementParseErrors(stream, stage)` for rejected records and `metrics.IncrementSourceErrors(stream, stage)` for stat/read/walk/decode failures. Streams so far: `gossip_rpc`, `gossip_connections`, `tcp_traffic`, `process`, `child_stderr`, `visor`, `node_state`, `disk`, `operator_config`. Block, consensus, replica, EVM and status streams are not yet on the envelope; 7.2 wants them.
+- Every consumed source reports `metrics.SetSourceUp(stream, bool)`, `metrics.MarkSourceSample(stream, at)` on a good record, `metrics.IncrementParseErrors(stream, stage)` for rejected records and `metrics.IncrementSourceErrors(stream, stage)` for stat/read/walk/decode failures. Tight-loop log streams get this for free from `streamTailer.run(ctx, fn)`; fn returns an error to reject a line and `parseStage` classifies it. Every stream has a fixture file under `internal/monitors/testdata/schema/` that `TestSchemaFixtures` checks; a new stream needs a new entry in `schemaStreams`.
 - Metrics for ported monitors are declared in `internal/metrics/node_instruments.go` with the local `gauge`/`counter` closures and published through `metrics.SetGauge`, `ClearGauge`, `SetGaugeSeries`, `ClearGaugeSeries`, `AddCounter`. A missing optional field withdraws its gauge (absent, not zero). `GaugeValue` and `GaugeSeriesValue` exist for tests.
 - Per-validator series are reconciled by `dropMissing(known, seen, remove)`; an empty snapshot removes nothing.
 - Per-`peer_ip` gossip series publish only with `--peer-latency` (`perIP` field on the gossip monitors).
@@ -472,10 +478,9 @@ Read this before starting phase 6. Everything above the phase list is still the 
 - 6.1 CI: done, see the 6.1 section for what was taken and rejected.
 - 6.2 release: `iris/.github/workflows/release.yml` is the reference; the 6.2 section lists exactly which pieces to take.
 - 6.3 self-observability (deferred): `internal/metrics/prometheus.go` serves `/metrics` and a static `/health`. Build info lives in `cmd/hyperliquid-exporter/main.go` (`printBuildInfo`). `/readyz` can key off `hl_exporter_source_up`.
-- 7.2 schema watch: `hl_exporter_parse_errors_total` exists; the block, consensus, replica, EVM and status parsers still need to count into it before the drift test is meaningful.
 - Leftovers as capacity allows: 3.7 (`--binary-metrics`, default off), 3.8 heartbeat ack correlation, 2.4 consensus lock batching, Tier 5 ranks 6 to 10.
 
-**Open verification debt.** Nothing from phases 3 to 5 has run on a live node. Before release: a mainnet non-validator (parent selection stability, admission gate registering the expected peers, disk walk duration on a full NODE_HOME, process gauges) and a validator (validator count, timeout rounds, signer mapping, proposer `name`, one order counts as one operation, jailing threshold). Also the phase 1 validator checks and the CPU baseline if still wanted.
+**Open verification debt.** Nothing from phases 3 to 6 has run on a live node. Phase 6 also owes the first live pull for the schema watch (`docs/operations/hl-node-schema-watch.md` step 1) from a mainnet non-validator and a validator, so the committed samples are refreshed from real lines rather than the constructed test fixtures. Before release: a mainnet non-validator (parent selection stability, admission gate registering the expected peers, disk walk duration on a full NODE_HOME, process gauges) and a validator (validator count, timeout rounds, signer mapping, proposer `name`, one order counts as one operation, jailing threshold). Also the phase 1 validator checks and the CPU baseline if still wanted.
 
 ## Testing Decisions
 
@@ -488,13 +493,13 @@ Read this before starting phase 6. Everything above the phase list is still the 
 
 - On a current mainnet node: signer to validator mapping populated, `hl_timeout_rounds_total` increments, proposer counters carry `name`, one order counts as one operation.
 - A deliberate `panic` injected in any monitor increments `hl_exporter_monitor_panics_total` and does not exit the process (unit test on `runMonitor`).
-- Heartbeat fixtures in 3.8 pass: distinct delays for same-ID different-round heartbeats, ambiguous joins dropped and counted.
+- Heartbeat fixtures in 3.8 pass: distinct delays for same-ID different-round heartbeats, ambiguous joins dropped and counted. Done.
 - The schema-watch test in 7.2 runs green in CI against committed samples.
 - CI runs govulncheck; `alerts/` and generated metric docs are intentionally absent.
 - Exporter CPU on a live validator under 20% (upstream reported 195% before and single digits after their fix).
 - Restart does not increment `hl_p2p_*_total` counters by the replayed hour.
 - `make lint`, `make test RACE=1`, govulncheck clean.
-- `docs/routines/` exists with both routines and a seeded review log.
+- `docs/operations/` exists with both routines and a seeded review log.
 
 ## Open Questions
 

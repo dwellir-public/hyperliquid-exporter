@@ -7,6 +7,22 @@ import (
 	"time"
 )
 
+// parseStage classifies a rejected log line for
+// hl_exporter_parse_errors_total: json for malformed JSON, timestamp for a
+// bad time field, shape for anything else (missing or mistyped fields).
+func parseStage(err error) string {
+	var syntax *json.SyntaxError
+	var timeErr *time.ParseError
+	switch {
+	case errors.As(err, &syntax):
+		return "json"
+	case errors.As(err, &timeErr):
+		return "timestamp"
+	default:
+		return "shape"
+	}
+}
+
 // unmarshalRequiredJSON rejects JSON null before decoding a required scalar or
 // object field. encoding/json otherwise accepts null for primitive destinations
 // and silently leaves their zero value, which can turn malformed log records

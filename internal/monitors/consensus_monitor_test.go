@@ -2,6 +2,7 @@ package monitors
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -201,7 +202,7 @@ func TestProcessHeartbeatOut(t *testing.T) {
 		}
 
 		m.heartbeatsMutex.RLock()
-		_, exists := m.heartbeats[99]
+		_, exists := m.heartbeats[heartbeatKey{randomID: 99}]
 		m.heartbeatsMutex.RUnlock()
 
 		if !exists {
@@ -266,6 +267,73 @@ func TestProcessHeartbeatAck(t *testing.T) {
 			t.Error("expected error for empty source")
 		}
 	})
+}
+
+// hl-node reuses random IDs across rounds; the round disambiguates.
+func TestHeartbeatAckJoinsOnRandomIDAndRound(t *testing.T) {
+	m := newTestConsensusMonitor(t)
+	base := time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC)
+	line := func(offset time.Duration, dir, msg string) string {
+		return fmt.Sprintf(`["%s",[%q,%s]]`, base.Add(offset).Format("2006-01-02T15:04:05.000000000"), dir, msg)
+	}
+	for _, l := range []string{
+		line(0, "out", `{"Heartbeat":{"validator":"0xaaaa","random_id":4003763466,"round":100}}`),
+		line(time.Second, "out", `{"Heartbeat":{"validator":"0xaaaa","random_id":4003763466,"round":101}}`),
+	} {
+		if err := m.processConsensusLine(l); err != nil {
+			t.Fatalf("%s: %v", l, err)
+		}
+	}
+
+	origin, delay, outcome := m.joinHeartbeatAck(&HeartbeatAckMessage{Validator: "0xbb..bb", RandomID: 4003763466, Round: 101}, "0xbbbb", base.Add(1200*time.Millisecond))
+	if outcome != ackMatched || origin != "0xaaaa" || delay != 200*time.Millisecond {
+		t.Fatalf("round 101 ack: origin=%q delay=%v outcome=%v", origin, delay, outcome)
+	}
+	origin, delay, outcome = m.joinHeartbeatAck(&HeartbeatAckMessage{RandomID: 4003763466, Round: 100}, "0xcccc", base.Add(50*time.Millisecond))
+	if outcome != ackMatched || origin != "0xaaaa" || delay != 50*time.Millisecond {
+		t.Fatalf("round 100 ack: origin=%q delay=%v outcome=%v", origin, delay, outcome)
+	}
+
+	// same responder acking the same heartbeat twice is not a second sample
+	if _, _, outcome := m.joinHeartbeatAck(&HeartbeatAckMessage{RandomID: 4003763466, Round: 100}, "0xcccc", base.Add(60*time.Millisecond)); outcome != ackDuplicate {
+		t.Fatalf("duplicate ack outcome = %v", outcome)
+	}
+	// an ack from before the heartbeat was sent cannot be a delay
+	if _, _, outcome := m.joinHeartbeatAck(&HeartbeatAckMessage{RandomID: 4003763466, Round: 100}, "0xdddd", base.Add(-time.Millisecond)); outcome != ackNegative {
+		t.Fatalf("negative ack outcome = %v", outcome)
+	}
+	// unknown random ID predates monitoring
+	if _, _, outcome := m.joinHeartbeatAck(&HeartbeatAckMessage{RandomID: 1, Round: 100}, "0xdddd", base); outcome != ackOrphan {
+		t.Fatalf("orphan ack outcome = %v", outcome)
+	}
+}
+
+// An ack that cannot be pinned to one outgoing heartbeat is dropped and counted.
+func TestHeartbeatAckAmbiguousJoinDropped(t *testing.T) {
+	m := newTestConsensusMonitor(t)
+	base := time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC)
+	for _, round := range []uint64{100, 101} {
+		if err := m.processHeartbeatOut(&HeartbeatMessage{Validator: "0xaaaa", RandomID: 7, Round: round}, base); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// older builds ack without a round: two candidates, no way to choose
+	if _, _, outcome := m.joinHeartbeatAck(&HeartbeatAckMessage{RandomID: 7}, "0xbbbb", base.Add(time.Millisecond)); outcome != ackAmbiguous {
+		t.Fatalf("outcome = %v, want ambiguous", outcome)
+	}
+	// the line-level handler drops it without error
+	if err := m.processHeartbeatAck(&HeartbeatAckMessage{RandomID: 7}, "0xbbbb", base.Add(time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	// neither heartbeat was consumed by the ambiguous ack
+	m.heartbeatsMutex.RLock()
+	defer m.heartbeatsMutex.RUnlock()
+	for key, info := range m.heartbeats {
+		if len(info.acked) != 0 {
+			t.Fatalf("heartbeat %+v marked acked by an ambiguous join", key)
+		}
+	}
 }
 
 func TestProcessStatusLine(t *testing.T) {

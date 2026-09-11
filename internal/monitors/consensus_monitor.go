@@ -1,13 +1,10 @@
 package monitors
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,7 +16,6 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
-	"github.com/validaoxyz/hyperliquid-exporter/internal/utils"
 )
 
 // stores QC participation data for sliding window calc
@@ -34,13 +30,39 @@ type qcWindowEntry struct {
 	signers   []string
 }
 
+// heartbeatKey identifies one outgoing heartbeat. hl-node reuses random IDs
+// across rounds, so the round is part of the identity; an ack without a round
+// (older builds) joins only when the random ID alone is unique.
+type heartbeatKey struct {
+	randomID uint64
+	round    uint64
+}
+
 // heartbeatInfo stores information about sent heartbeats
 type heartbeatInfo struct {
 	validator string
 	timestamp time.Time
+	acked     map[string]struct{} // responders already joined to this heartbeat
 }
 
+// ackOutcome is the result of joining an ack to an outgoing heartbeat.
+type ackOutcome int
+
+const (
+	ackMatched   ackOutcome = iota
+	ackOrphan               // no outgoing heartbeat with that random ID (predates monitoring)
+	ackAmbiguous            // more than one outgoing heartbeat fits
+	ackDuplicate            // this responder already acked this heartbeat
+	ackNegative             // ack timestamp precedes the heartbeat
+)
+
 // monitors consensus-related logs and metrics
+// envelope stream names for the two hl-node logs this monitor tails
+const (
+	consensusStream = "consensus"
+	statusStream    = "status"
+)
+
 type ConsensusMonitor struct {
 	config *config.Config
 	// signers seen in a QC, keyed by signer with the time of the last sighting.
@@ -62,7 +84,7 @@ type ConsensusMonitor struct {
 	disconnectedMutex sync.RWMutex
 
 	// Heartbeat tracking
-	heartbeats      map[float64]heartbeatInfo // randomID -> heartbeat info
+	heartbeats      map[heartbeatKey]heartbeatInfo
 	heartbeatsMutex sync.RWMutex
 
 	// verification tracking
@@ -93,7 +115,7 @@ func NewConsensusMonitor(cfg *config.Config) *ConsensusMonitor {
 		windowSize:      100,       // keep last 100 blocks for participation calculation
 		windowDuration:  time.Hour, // or calculate based on last hour
 		disconnectedSet: make(map[string]bool),
-		heartbeats:      make(map[float64]heartbeatInfo),
+		heartbeats:      make(map[heartbeatKey]heartbeatInfo),
 	}
 }
 
@@ -159,117 +181,41 @@ func StartConsensusMonitor(ctx context.Context, cfg *config.Config, errCh chan<-
 }
 
 // monitors the consensus log files
-func (m *ConsensusMonitor) monitorConsensusLogs(ctx context.Context, errCh chan<- error) {
+func (m *ConsensusMonitor) monitorConsensusLogs(ctx context.Context, _ chan<- error) {
 	consensusDir := filepath.Join(m.config.NodeHome, "data", "node_logs", "consensus", "hourly")
 
 	// check if consensus log directory exists
 	if _, err := os.Stat(consensusDir); os.IsNotExist(err) {
 		logger.InfoComponent("consensus", "Consensus logs not available (non-validator node) - skipping consensus monitoring")
+		metrics.SetSourceUp(consensusStream, false)
 		return
 	}
 
 	logger.InfoComponent("consensus", "Starting comprehensive consensus monitoring in: %s", consensusDir)
-	files := utils.NewLatestFileCache(consensusDir, latestFileRescan)
-
-	var currentFile string
-	var file *os.File
-	var fileReader *bufio.Reader
-	isFirstRun := true
-
-	for {
-		select {
-		case <-ctx.Done():
-			if file != nil {
-				_ = file.Close()
-			}
-			return
-		default:
-			// find the latest log file
-			latestFile, err := files.Get()
-			if err != nil {
-				if errors.Is(err, os.ErrNotExist) {
-					time.Sleep(10 * time.Second)
-					continue
-				}
-				errCh <- fmt.Errorf("error finding latest consensus log file: %w", err)
-				time.Sleep(5 * time.Second)
-				continue
-			}
-
-			if latestFile == "" {
-				time.Sleep(10 * time.Second)
-				continue
-			}
-
-			// switch to new file if needed
-			if latestFile != currentFile {
-				if file != nil {
-					_ = file.Close()
-					file = nil
-					fileReader = nil
-				}
-
-				file, err = os.Open(latestFile)
-				if err != nil {
-					errCh <- fmt.Errorf("error opening consensus log file: %w", err)
-					time.Sleep(1 * time.Second)
-					continue
-				}
-
-				// skip to end on first run
-				if isFirstRun {
-					_, err = file.Seek(0, io.SeekEnd)
-					if err != nil {
-						errCh <- fmt.Errorf("error seeking to end of file: %w", err)
-						_ = file.Close()
-						file = nil
-						time.Sleep(1 * time.Second)
-						continue
-					}
-					logger.InfoComponent("consensus", "First run: starting to stream from the end of file %s", latestFile)
-					isFirstRun = false
-				} else {
-					logger.InfoComponent("consensus", "Not first run: reading entire file %s", latestFile)
-				}
-
-				fileReader = bufio.NewReader(file)
-				currentFile = latestFile
-			}
-
-			// read and process lines
-			if fileReader != nil {
-				for {
-					line, err := fileReader.ReadString('\n')
-					if err != nil {
-						if err == io.EOF {
-							// housekeeping runs from the tail goroutine so it
-							// needs no lock and still fires while logs are quiet
-							m.pruneSigners(time.Now())
-							time.Sleep(10 * time.Millisecond)
-							break
-						}
-						errCh <- fmt.Errorf("error reading consensus log: %w", err)
-						break
-					}
-
-					if err := m.processConsensusLine(line); err != nil {
-						logger.DebugComponent("consensus", "Error processing consensus line: %v", err)
-						metrics.IncrementConsensusMonitorErrors("consensus")
-						m.statsMutex.Lock()
-						m.verificationStats.ParseErrors++
-						m.statsMutex.Unlock()
-					} else {
-						metrics.IncrementConsensusMonitorLines("consensus")
-						metrics.SetConsensusMonitorLastProcessed("consensus", time.Now().Unix())
-						m.statsMutex.Lock()
-						m.verificationStats.LinesProcessed++
-						m.verificationStats.LastProcessedAt = time.Now()
-						m.statsMutex.Unlock()
-					}
-				}
-			}
-		}
+	t := streamTailer{
+		stream:    consensusStream,
+		component: "consensus",
+		dir:       consensusDir,
+		// housekeeping runs from the tail goroutine so it needs no lock and
+		// still fires while logs are quiet
+		idle: func() { m.pruneSigners(time.Now()) },
 	}
+	t.run(ctx, func(line []byte) error {
+		if err := m.processConsensusLine(string(line)); err != nil {
+			metrics.IncrementConsensusMonitorErrors("consensus")
+			m.statsMutex.Lock()
+			m.verificationStats.ParseErrors++
+			m.statsMutex.Unlock()
+			return err
+		}
+		metrics.IncrementConsensusMonitorLines("consensus")
+		metrics.SetConsensusMonitorLastProcessed("consensus", time.Now().Unix())
+		m.statsMutex.Lock()
+		m.verificationStats.LinesProcessed++
+		m.verificationStats.LastProcessedAt = time.Now()
+		m.statsMutex.Unlock()
+		return nil
+	})
 }
 
 // processes a single line from consensus logs
@@ -587,18 +533,17 @@ func (m *ConsensusMonitor) processHeartbeatOut(hb *HeartbeatMessage, timestamp t
 	}
 	formattedValidator := m.formatValidatorAddress(validator)
 
-	// Store heartbeat info
 	m.heartbeatsMutex.Lock()
-	m.heartbeats[hb.RandomID] = heartbeatInfo{
+	m.heartbeats[heartbeatKey{randomID: hb.RandomID, round: hb.Round}] = heartbeatInfo{
 		validator: validator,
 		timestamp: timestamp,
 	}
 
 	// Clean up old heartbeats (older than 5 minutes)
-	cutoff := time.Now().Add(-5 * time.Minute)
-	for id, info := range m.heartbeats {
+	cutoff := timestamp.Add(-5 * time.Minute)
+	for key, info := range m.heartbeats {
 		if info.timestamp.Before(cutoff) {
-			delete(m.heartbeats, id)
+			delete(m.heartbeats, key)
 		}
 	}
 	m.heartbeatsMutex.Unlock()
@@ -606,9 +551,50 @@ func (m *ConsensusMonitor) processHeartbeatOut(hb *HeartbeatMessage, timestamp t
 	// Increment heartbeat sent counter
 	metrics.IncrementHeartbeatsSent(formattedValidator)
 
-	logger.DebugComponent("consensus", "Registered outgoing heartbeat from %s with ID %.0f", formattedValidator, hb.RandomID)
+	logger.DebugComponent("consensus", "Registered outgoing heartbeat from %s with ID %d round %d", formattedValidator, hb.RandomID, hb.Round)
 
 	return nil
+}
+
+// joinHeartbeatAck finds the unique outgoing heartbeat an ack belongs to and
+// records the responder against it. It returns the heartbeat's origin
+// validator and the ack delay on a match.
+func (m *ConsensusMonitor) joinHeartbeatAck(ack *HeartbeatAckMessage, responder string, timestamp time.Time) (origin string, delay time.Duration, outcome ackOutcome) {
+	m.heartbeatsMutex.Lock()
+	defer m.heartbeatsMutex.Unlock()
+
+	var key heartbeatKey
+	var info heartbeatInfo
+	matches := 0
+	for candidate, candidateInfo := range m.heartbeats {
+		if candidate.randomID != ack.RandomID {
+			continue
+		}
+		if ack.Round != 0 && candidate.round != ack.Round {
+			continue
+		}
+		matches++
+		key, info = candidate, candidateInfo
+	}
+	switch {
+	case matches == 0:
+		return "", 0, ackOrphan
+	case matches > 1:
+		return "", 0, ackAmbiguous
+	}
+	if _, seen := info.acked[responder]; seen {
+		return "", 0, ackDuplicate
+	}
+	delay = timestamp.Sub(info.timestamp)
+	if delay < 0 {
+		return "", 0, ackNegative
+	}
+	if info.acked == nil {
+		info.acked = make(map[string]struct{})
+	}
+	info.acked[responder] = struct{}{}
+	m.heartbeats[key] = info
+	return info.validator, delay, ackMatched
 }
 
 // processHeartbeatAck processes heartbeat acknowledgment messages
@@ -621,26 +607,21 @@ func (m *ConsensusMonitor) processHeartbeatAck(ack *HeartbeatAckMessage, source 
 		return fmt.Errorf("missing source in ack")
 	}
 
-	// Look up the original heartbeat
-	m.heartbeatsMutex.RLock()
-	hbInfo, exists := m.heartbeats[ack.RandomID]
-	m.heartbeatsMutex.RUnlock()
-
-	if !exists {
-		// Heartbeat not found - might be from before we started monitoring
+	origin, delay, outcome := m.joinHeartbeatAck(ack, source, timestamp)
+	switch outcome {
+	case ackAmbiguous:
+		metrics.IncrementHeartbeatAckAmbiguous()
+		logger.DebugComponent("consensus", "Heartbeat ack from %s with ID %d round %d matches several outgoing heartbeats, dropped", source, ack.RandomID, ack.Round)
+		return nil
+	case ackOrphan, ackDuplicate, ackNegative:
 		return nil
 	}
 
-	// calculate delay
-	delay := timestamp.Sub(hbInfo.timestamp)
-
-	// get formatted addresses
-	fromValidator := m.formatValidatorAddress(hbInfo.validator)
+	fromValidator := m.formatValidatorAddress(origin)
 	toValidator := m.formatValidatorAddress(source)
 
-	// update metrics
 	metrics.IncrementHeartbeatAcksReceived(fromValidator, toValidator)
-	metrics.RecordHeartbeatAckDelay(fromValidator, toValidator, float64(delay.Milliseconds()))
+	metrics.RecordHeartbeatAckDelay(float64(delay.Milliseconds()))
 
 	logger.DebugComponent("consensus", "Heartbeat ack from %s to %s, delay: %v", toValidator, fromValidator, delay)
 
@@ -695,104 +676,27 @@ func (m *ConsensusMonitor) pruneSigners(now time.Time) {
 }
 
 // monitors the status log files for additional consensus info
-func (m *ConsensusMonitor) monitorStatusLogs(ctx context.Context, errCh chan<- error) {
+func (m *ConsensusMonitor) monitorStatusLogs(ctx context.Context, _ chan<- error) {
 	statusDir := filepath.Join(m.config.NodeHome, "data", "node_logs", "status", "hourly")
 
 	// check if status log dir exists
 	if _, err := os.Stat(statusDir); os.IsNotExist(err) {
 		logger.InfoComponent("consensus", "Status logs not available (non-validator node) - skipping status monitoring")
+		metrics.SetSourceUp(statusStream, false)
 		return
 	}
 
 	logger.InfoComponent("consensus", "Starting status log monitoring in: %s", statusDir)
-	files := utils.NewLatestFileCache(statusDir, latestFileRescan)
-
-	var currentFile string
-	var openFile *os.File
-	var fileReader *bufio.Reader
-	isFirstRun := true
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			// find latest log file
-			latestFile, err := files.Get()
-			if err != nil {
-				if errors.Is(err, os.ErrNotExist) {
-					time.Sleep(10 * time.Second)
-					continue
-				}
-				errCh <- fmt.Errorf("error finding latest status log file: %w", err)
-				time.Sleep(5 * time.Second)
-				continue
-			}
-
-			if latestFile == "" {
-				time.Sleep(10 * time.Second)
-				continue
-			}
-
-			// switch to new file if needed
-			if latestFile != currentFile {
-				if openFile != nil {
-					_ = openFile.Close()
-					openFile = nil
-					fileReader = nil
-				}
-
-				file, err := os.Open(latestFile)
-				if err != nil {
-					errCh <- fmt.Errorf("error opening status log file: %w", err)
-					time.Sleep(1 * time.Second)
-					continue
-				}
-
-				// skip to end on first run
-				if isFirstRun {
-					_, err = file.Seek(0, io.SeekEnd)
-					if err != nil {
-						errCh <- fmt.Errorf("error seeking to end of file: %w", err)
-						_ = file.Close()
-						time.Sleep(1 * time.Second)
-						continue
-					}
-					logger.InfoComponent("consensus", "First run: starting to stream status from the end of file %s", latestFile)
-					isFirstRun = false
-				} else {
-					logger.InfoComponent("consensus", "Not first run: reading entire status file %s", latestFile)
-				}
-
-				openFile = file
-				fileReader = bufio.NewReader(file)
-				currentFile = latestFile
-			}
-
-			// read and process lines
-			if fileReader != nil {
-				for {
-					line, err := fileReader.ReadString('\n')
-					if err != nil {
-						if err == io.EOF {
-							time.Sleep(10 * time.Millisecond)
-							break
-						}
-						errCh <- fmt.Errorf("error reading status log: %w", err)
-						break
-					}
-
-					if err := m.processStatusLine(line); err != nil {
-						logger.DebugComponent("consensus", "Error processing status line: %v", err)
-						metrics.IncrementConsensusMonitorErrors("status")
-					} else {
-						metrics.IncrementConsensusMonitorLines("status")
-						metrics.SetConsensusMonitorLastProcessed("status", time.Now().Unix())
-					}
-				}
-			}
+	t := streamTailer{stream: statusStream, component: "consensus", dir: statusDir}
+	t.run(ctx, func(line []byte) error {
+		if err := m.processStatusLine(string(line)); err != nil {
+			metrics.IncrementConsensusMonitorErrors("status")
+			return err
 		}
-	}
+		metrics.IncrementConsensusMonitorLines("status")
+		metrics.SetConsensusMonitorLastProcessed("status", time.Now().Unix())
+		return nil
+	})
 }
 
 // processStatusLine processes a single line from status logs

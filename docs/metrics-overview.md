@@ -175,7 +175,8 @@ The above are available to all node types, while the below metrics require acces
 | Metric | Type | Labels | Description | Requirements |
 |--------|------|--------|-------------|--------------|
 | `hl_consensus_current_round` | Gauge | - | Current consensus round from block messages | Validator node |
-| `hl_consensus_heartbeat_ack_delay_ms` | Histogram | - | Heartbeat acknowledgement delays | Validator node |
+| `hl_consensus_heartbeat_ack_delay_ms` | Histogram | - | Delay between an outgoing heartbeat and each peer's acknowledgement, joined on random ID and round. Unlabeled on purpose; the pair is on `hl_consensus_heartbeat_ack_received_total` | Validator node |
+| `hl_consensus_heartbeat_ack_ambiguous_total` | Counter | - | Acknowledgements dropped because more than one outgoing heartbeat matched their random ID and round (acks from older builds carry no round) | Validator node |
 | `hl_consensus_heartbeat_ack_received_total` | Counter | `from_validator`, `to_validator`, `from_name`, `to_name` | Heartbeat acknowledgments between validator pairs | Validator node |
 | `hl_consensus_heartbeat_sent_total` | Counter | `validator`, `signer`, `name` | Total heartbeats sent by validators | Validator node |
 | `hl_consensus_heartbeat_status` | Gauge | `validator`, `signer`, `name`, `status_type` | Heartbeat health metrics (status_type: since_last_success, last_ack_duration) | Validator node |
@@ -296,7 +297,7 @@ Reads `file_mod_time_tracker/` every 5 min: presence and age of eight fixed oper
 | `hl_exporter_parse_errors_total` | Counter | `stream`, `stage` | Records rejected by a stream parser. `stage` is `json`, `shape`, `timestamp`, `payload`, `record` or `row`. A rising value on a healthy node means hl-node changed a log shape | - |
 | `hl_exporter_source_errors_total` | Counter | `stream`, `stage` | Failures reading or interpreting a source (`stat`, `read`, `walk`, `statfs`, `decode`, `schema`). A missing source is not an error; it sets `hl_exporter_source_up` to 0 | - |
 
-`stream` is one of `gossip_rpc`, `gossip_connections`, `tcp_traffic`, `process`, `child_stderr`, `visor`, `node_state`, `disk`, `operator_config`. Parse errors apply to the three log streams; the others report non-parse failures below.
+`stream` names the consumed source. Log streams, which report parse errors: `node_fast_block_times`, `node_slow_block_times`, `block_times` (legacy layout), `consensus`, `status` (tailed by the consensus monitor), `validator_status` (the 30 s last-line poll of the same status log), `replica_cmds`, `evm_block_and_receipts`, `gossip_rpc`, `gossip_connections`, `tcp_traffic`. File and procfs sources, which report source errors only: `process`, `child_stderr`, `visor`, `node_state`, `disk`, `operator_config`. The proposal monitor tails `replica_cmds` too but reports nothing; the replica monitor owns that stream. `docs/operations/hl-node-schema-watch.md` describes how to act on a rising parse-error counter.
 
 ## Label Definitions
 

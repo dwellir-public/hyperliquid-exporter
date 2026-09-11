@@ -12,3 +12,6 @@ hl-python-venv/
 # Ignore local Hyperliquid node data
 hl/
 
+
+# Live hl-node log samples pulled by docs/operations/hl-node-schema-watch.md
+internal/monitors/testdata/live/

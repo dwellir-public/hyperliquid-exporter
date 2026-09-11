@@ -87,14 +87,15 @@ var (
 	HLEVMPriorityFeeHistogram api.Float64Histogram
 
 	// consensus monitoring metrics
-	HLConsensusVoteRoundGauge       api.Int64ObservableGauge
-	HLConsensusVoteTimeDiffGauge    api.Float64ObservableGauge
-	HLConsensusCurrentRoundGauge    api.Int64ObservableGauge
-	HLConsensusHeartbeatSentCounter api.Int64Counter
-	HLConsensusHeartbeatAckCounter  api.Int64Counter
-	HLConsensusHeartbeatDelayHist   api.Float64Histogram
-	HLConsensusConnectivityGauge    api.Float64ObservableGauge
-	HLConsensusHeartbeatStatusGauge api.Float64ObservableGauge
+	HLConsensusVoteRoundGauge               api.Int64ObservableGauge
+	HLConsensusVoteTimeDiffGauge            api.Float64ObservableGauge
+	HLConsensusCurrentRoundGauge            api.Int64ObservableGauge
+	HLConsensusHeartbeatSentCounter         api.Int64Counter
+	HLConsensusHeartbeatAckCounter          api.Int64Counter
+	HLConsensusHeartbeatDelayHist           api.Float64Histogram
+	HLConsensusHeartbeatAckAmbiguousCounter api.Int64Counter
+	HLConsensusConnectivityGauge            api.Float64ObservableGauge
+	HLConsensusHeartbeatStatusGauge         api.Float64ObservableGauge
 
 	// QC and TC metrics
 	HLConsensusQCSignaturesCounter    api.Int64Counter
@@ -711,6 +712,14 @@ func createInstruments() error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create consensus heartbeat ack counter: %w", err)
+	}
+
+	HLConsensusHeartbeatAckAmbiguousCounter, err = meter.Int64Counter(
+		"hl_consensus_heartbeat_ack_ambiguous_total",
+		api.WithDescription("Heartbeat acknowledgments dropped because more than one outgoing heartbeat matched their random ID and round"),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create consensus heartbeat ack ambiguous counter: %w", err)
 	}
 
 	HLConsensusHeartbeatDelayHist, err = meter.Float64Histogram(

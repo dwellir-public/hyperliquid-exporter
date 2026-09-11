@@ -131,6 +131,42 @@ func (m *GossipMonitor) monitorGossipLogs(ctx context.Context, errCh chan<- erro
 
 // processGossipFile tails filePath from offset. With seeding set, the
 // incoming-request counter is not incremented (startup replay).
+// gossipRPCEvent is one decoded gossip_rpc line: [timestamp, [event, ...payload]].
+type gossipRPCEvent struct {
+	at        time.Time
+	eventType string
+	data      []json.RawMessage
+}
+
+// parseGossipRPCLine decodes the envelope of a gossip_rpc line. A non-empty
+// stage names the parse-error stage; event payloads are decoded by the caller.
+func parseGossipRPCLine(line []byte) (gossipRPCEvent, string) {
+	var entry []json.RawMessage
+	if err := json.Unmarshal(line, &entry); err != nil {
+		return gossipRPCEvent{}, "json"
+	}
+	if len(entry) != 2 {
+		return gossipRPCEvent{}, "shape"
+	}
+	var timestamp string
+	if err := unmarshalRequiredJSON(entry[0], &timestamp); err != nil {
+		return gossipRPCEvent{}, "timestamp"
+	}
+	at, ok := parseVisorTime(timestamp)
+	if !ok {
+		return gossipRPCEvent{}, "timestamp"
+	}
+	var data []json.RawMessage
+	if err := json.Unmarshal(entry[1], &data); err != nil || len(data) < 2 {
+		return gossipRPCEvent{}, "shape"
+	}
+	var eventType string
+	if err := unmarshalRequiredJSON(data[0], &eventType); err != nil {
+		return gossipRPCEvent{}, "shape"
+	}
+	return gossipRPCEvent{at: at, eventType: eventType, data: data}, ""
+}
+
 func (m *GossipMonitor) processGossipFile(filePath string, offset int64, seeding bool) (int64, error) {
 	if filePath == "" {
 		return offset, fmt.Errorf("empty file path")
@@ -148,41 +184,13 @@ func (m *GossipMonitor) processGossipFile(filePath string, offset int64, seeding
 	}
 
 	newOffset, err := readCommittedLines(filePath, offset, func(line []byte) {
-		var entry []json.RawMessage
-		if err := json.Unmarshal(line, &entry); err != nil {
-			parseError("json")
-			return
-		}
-
-		if len(entry) != 2 {
-			parseError("shape")
-			return
-		}
-
-		var timestamp string
-		if err := unmarshalRequiredJSON(entry[0], &timestamp); err != nil {
-			parseError("timestamp")
-			return
-		}
-
-		entryTime, ok := parseVisorTime(timestamp)
-		if !ok {
-			parseError("timestamp")
-			return
-		}
-
-		var eventData []json.RawMessage
-		if err := json.Unmarshal(entry[1], &eventData); err != nil || len(eventData) < 2 {
-			parseError("shape")
-			return
-		}
-
-		var eventType string
-		if err := unmarshalRequiredJSON(eventData[0], &eventType); err != nil {
-			parseError("shape")
+		ev, stage := parseGossipRPCLine(line)
+		if stage != "" {
+			parseError(stage)
 			return
 		}
 		sampled = true
+		entryTime, eventType, eventData := ev.at, ev.eventType, ev.data
 
 		switch eventType {
 		case "child_peers status":

@@ -881,13 +881,17 @@ func IncrementHeartbeatAcksReceived(fromValidator, toValidator string) {
 	))
 }
 
-func RecordHeartbeatAckDelay(_, _ string, delayMs float64) {
-	ctx := context.Background()
+// RecordHeartbeatAckDelay observes one matched ack delay. The histogram is
+// unlabeled on purpose: per-pair buckets would be quadratic in the validator
+// set, and hl_consensus_heartbeat_ack_received_total already carries the pair.
+func RecordHeartbeatAckDelay(delayMs float64) {
 	if HLConsensusHeartbeatDelayHist != nil {
-		// record without labels to reduce cardinality
-		// the histogram tracks the distribution of all heartbeat delays across the network
-		HLConsensusHeartbeatDelayHist.Record(ctx, delayMs)
+		HLConsensusHeartbeatDelayHist.Record(context.Background(), delayMs)
 	}
+}
+
+func IncrementHeartbeatAckAmbiguous() {
+	HLConsensusHeartbeatAckAmbiguousCounter.Add(context.Background(), 1)
 }
 
 func SetValidatorConnectivity(validator, peer string, connected float64) {

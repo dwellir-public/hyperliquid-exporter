@@ -2,12 +2,9 @@
 package monitors
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -17,7 +14,6 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/logger"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
-	"github.com/validaoxyz/hyperliquid-exporter/internal/utils"
 )
 
 var (
@@ -27,6 +23,8 @@ var (
 	// block type metrics flag
 	blockTypeMetricsEnabled bool
 )
+
+const evmStream = "evm_block_and_receipts"
 
 // 1. Reads from evm_block_and_receipts files
 // 2. Parses height, gas, fees, success, gas usage
@@ -50,88 +48,10 @@ func StartEVMMonitor(ctx context.Context, cfg config.Config, errCh chan<- error)
 	logger.InfoComponent("evm", "Starting unified EVM monitoring in directory: %s", evmDataDir)
 
 	safego.Go("evm", func() {
-		// check if directory exists
-		if _, err := os.Stat(evmDataDir); os.IsNotExist(err) {
-			logger.WarningComponent("evm", "EVM block and receipts directory does not exist: %s", evmDataDir)
-			// continue running directory might be created later
-		}
-
-		var currentFilePath string
-		var openFile *os.File
-		var fileReader *bufio.Reader
-		isFirstRun := true
-
-		files := utils.NewLatestFileCache(evmDataDir, latestFileRescan)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				time.Sleep(1 * time.Second)
-
-				// find the latest file in the directory
-				latestFile, err := files.Get()
-				if err != nil {
-					errCh <- fmt.Errorf("error finding latest EVM data file: %w", err)
-					continue
-				}
-
-				// switch to new file if needed
-				if latestFile != currentFilePath {
-					logger.InfoComponent("evm", "Switching to new EVM data file: %s", latestFile)
-
-					if openFile != nil {
-						_ = openFile.Close()
-						openFile = nil
-						fileReader = nil
-					}
-
-					file, err := os.Open(latestFile)
-					if err != nil {
-						errCh <- fmt.Errorf("error opening EVM data file: %w", err)
-						continue
-					}
-
-					// on first run start from eof (tail mode)
-					// on subsequent runs read entire file
-					if isFirstRun {
-						_, err = file.Seek(0, io.SeekEnd)
-						if err != nil {
-							errCh <- fmt.Errorf("error seeking to end of file: %w", err)
-							_ = file.Close()
-							continue
-						}
-						logger.InfoComponent("evm", "First run: starting to stream from the end of file %s", latestFile)
-						isFirstRun = false
-					} else {
-						logger.InfoComponent("evm", "Not first run: reading entire file %s", latestFile)
-					}
-
-					openFile = file
-					fileReader = bufio.NewReader(file)
-					currentFilePath = latestFile
-				}
-
-				// process lines from the file
-				if fileReader != nil {
-					for {
-						line, err := fileReader.ReadString('\n')
-						if err != nil {
-							if err == io.EOF {
-								break
-							}
-							errCh <- fmt.Errorf("error reading from EVM data file: %w", err)
-							break
-						}
-
-						if err := processEVMBlockAndReceiptsLine(line); err != nil {
-							errCh <- fmt.Errorf("error processing EVM data line: %w", err)
-							continue
-						}
-					}
-				}
-			}
-		}
+		t := streamTailer{stream: evmStream, component: "evm", dir: evmDataDir}
+		t.run(ctx, func(line []byte) error {
+			return processEVMBlockAndReceiptsLine(string(line))
+		})
 	})
 }
 

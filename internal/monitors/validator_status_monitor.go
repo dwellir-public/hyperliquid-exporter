@@ -85,6 +85,11 @@ var (
 	lastMappingSource    string // "local", "api", or ""
 )
 
+// validatorStatusStream is the envelope name for this monitor's 30 s poll of
+// the newest status line; the consensus monitor tails the same log under
+// "status"
+const validatorStatusStream = "validator_status"
+
 func StartValidatorStatusMonitor(ctx context.Context, cfg config.Config, errCh chan<- error) {
 	safego.Go("consensus", func() {
 		// initial status check to set up logging context
@@ -116,49 +121,64 @@ func StartValidatorStatusMonitor(ctx context.Context, cfg config.Config, errCh c
 func readValidatorStatus(nodeHome string) error {
 	statusDir := filepath.Join(nodeHome, "data/node_logs/status/hourly")
 
-	// check if status directory exists first - if not, this isn't a validator node
-	if _, err := os.Stat(statusDir); os.IsNotExist(err) {
+	notValidator := func() {
 		metrics.SetIsValidator(false)
 		metrics.SetValidatorAddress("")
+	}
+
+	// check if status directory exists first - if not, this isn't a validator node
+	if _, err := os.Stat(statusDir); os.IsNotExist(err) {
+		metrics.SetSourceUp(validatorStatusStream, false)
+		notValidator()
 		return nil
 	}
 
 	latestFile, err := utils.LatestFile(statusDir)
-	if err != nil {
-		metrics.SetIsValidator(false)
-		metrics.SetValidatorAddress("")
+	if err != nil || latestFile == "" {
+		if err != nil {
+			metrics.IncrementSourceErrors(validatorStatusStream, "walk")
+		}
+		metrics.SetSourceUp(validatorStatusStream, false)
+		notValidator()
 		return nil
 	}
 
 	fileInfo, err := os.Stat(latestFile)
 	if err != nil {
 		logger.WarningComponent("consensus", "Error getting status file info: %v", err)
-		metrics.SetIsValidator(false)
-		metrics.SetValidatorAddress("")
+		metrics.IncrementSourceErrors(validatorStatusStream, "stat")
+		metrics.SetSourceUp(validatorStatusStream, false)
+		notValidator()
 		return nil
 	}
 
 	// if last file is > 12 hours, optimistically assume node is no longer a validator
 	if time.Since(fileInfo.ModTime()) > 12*time.Hour {
-		metrics.SetIsValidator(false)
-		metrics.SetValidatorAddress("")
+		metrics.SetSourceUp(validatorStatusStream, true)
+		notValidator()
 		return nil
 	}
 
 	lastLine, err := ReadLastLine(latestFile)
 	if err != nil {
 		logger.WarningComponent("consensus", "Error reading last line of status file: %v", err)
-		metrics.SetIsValidator(false)
-		metrics.SetValidatorAddress("")
+		metrics.IncrementSourceErrors(validatorStatusStream, "read")
+		metrics.SetSourceUp(validatorStatusStream, false)
+		notValidator()
+		return nil
+	}
+	metrics.SetSourceUp(validatorStatusStream, true)
+	if lastLine == "" {
 		return nil
 	}
 
 	if err := processValidatorStatusLine(lastLine); err != nil {
 		logger.WarningComponent("consensus", "Error processing validator status line: %v", err)
-		metrics.SetIsValidator(false)
-		metrics.SetValidatorAddress("")
+		metrics.IncrementParseErrors(validatorStatusStream, parseStage(err))
+		notValidator()
 		return nil
 	}
+	metrics.MarkSourceSample(validatorStatusStream, time.Now())
 
 	return nil
 }

@@ -1,0 +1,8 @@
+["2026-03-30T05:00:03.399",["handle_stream_connection","192.168.108.167:50850","gossip"]]
+["2026-03-30T05:00:09.841",["verified gossip rpc",{"Ip":"192.168.108.236"}]]
+["2026-03-30T05:00:09.841",["finished checks",{"Ip":"1.2.3.4"},true]]
+["2026-03-30T05:00:09.841",["closing gossip stream because no quorum yet",{"Ip":"1.2.3.4"},false]]
+["2026-03-30T05:00:09.841",["closing gossip stream because no quorum yet","1.2.3.4:4001",["a"]]]
+["2026-03-30T05:00:09.841",["dropping connection after sending abci state",{"Ip":"1.2.3.4"},true]]
+["2026-03-30T05:00:09.841",["dropping connection after sending abci state",{"Ip":"1.2.3.4"},"done"]]
+["2026-03-30T05:00:09.841",["sending evm kvs",{"Ip":"1.2.3.4"}]]

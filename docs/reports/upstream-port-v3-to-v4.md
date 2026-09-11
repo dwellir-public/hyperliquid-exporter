@@ -1,14 +1,14 @@
 # Upstream Port: validaoxyz v3.0.0 to v4.1.1
 
 **Date:** 2026-09-11
-**Commit:** `8d1e2eb` on `upstream-port-sep26` (base `447a838`, upstream/main `b150dcc`)
+**Commit:** `d395de2` on `upstream-port-sep26` (base `447a838`, upstream/main `b150dcc`)
 **Scope:** how six upstream releases were ported by hand into this divergent fork over 2026-09-10 and 2026-09-11, what landed, what was skipped, how it was verified, and what a future port should copy or avoid. Does not cover the release itself; everything here is still in the changelog's Unreleased section.
-**Status:** code complete and verified on a mainnet non-validator node. Validator-side verification and a second-engine review of the last five commits are still owed.
+**Status:** code complete and verified on a mainnet non-validator node. Validator-side verification and a second-engine review of three late commits are still owed (`docs/TODO.md` T3).
 **Related:** `docs/operations/upstream-sync.md`, `docs/operations/hl-node-schema-watch.md`, `docs/metrics-overview.md`, `docs/TODO.md`, `CHANGELOG.md` (Unreleased)
 
 ## TL;DR
 
-The fork descends from upstream v2.0.0 and shares no merge base with it, so nothing cherry-picks. Between March and September 2026 upstream shipped v3.0.0, v3.1.0, v4.0.6, v4.0.7, v4.1.0 and v4.1.1, about 41k added lines, including three hl-node log schema changes that had silently zeroed or frozen several of our metrics. Everything was ported at content level, item by item, in six phases and 12 code commits: 104 files, +8128/-2421 lines, 77 new test functions. About six hours of active work spread over 16 hours of wall clock. The plan doc that drove it was written first from a parallel survey of upstream, then used as the handoff medium between sessions. Two bugs that no review engine caught were found in the one hour of live-node verification at the end.
+The fork descends from upstream v2.0.0 and shares no merge base with it, so nothing cherry-picks. Between March and September 2026 upstream shipped v3.0.0, v3.1.0, v4.0.6, v4.0.7, v4.1.0 and v4.1.1, about 41k added lines, including three hl-node log schema changes that had silently zeroed or frozen several of our metrics. Everything was ported at content level, item by item, in six phases and 9 code commits: 104 files, +8128/-2421 lines, 77 new test functions. About six hours of active work spread over 16 hours of wall clock. The plan doc that drove it was written first from a parallel survey of upstream, then used as the handoff medium between sessions. Two bugs that no review engine caught were found in the one hour of live-node verification at the end.
 
 ## 1. Context and Motivation
 
@@ -33,7 +33,7 @@ At `447a838` (2026-09-10 19:02, the commit that removed the dead Hyperscan contr
 
 ## 3. Final State
 
-At `8d1e2eb`:
+At `d395de2`:
 
 - Every goroutine launch goes through `safego.Go` (`internal/safego/safego.go:20`), with `hl_exporter_monitor_panics_total{monitor}`.
 - Latest-file lookup is `utils.LatestFile` (`internal/utils/utils.go:20`), a depth-agnostic greatest-name descent over `os.ReadDir`, with `LatestFileCache` gating re-resolution to once per 2 s in EOF loops.
@@ -53,25 +53,25 @@ At `8d1e2eb`:
 
 Ten minutes of probing settled the method: `git merge-base main upstream/main` returned nothing, and `git fetch upstream --tags` was rejected because our v1.x and v2.x tags collide with upstream's. Conclusion: no cherry-picks, port by feature, read upstream via `git show upstream/main:<path>` pinned at `b150dcc`. Three parallel agents surveyed upstream's diff, changelog and audit doc into a scratch review, and the plan was written from that survey: eight tiers ranked by severity (schema breaks, crash safety, perf, correctness, peer monitoring, new monitors, infra, routines), then regrouped into six phases by dependency and shared code surface. The tier-versus-phase split needed an explanatory paragraph after the first read; write that up front next time.
 
-### 4.2 Phase 1: safety and schema (`2b11c0c`, 19:51)
+### 4.2 Phase 1: safety and schema (`e098b34`, 19:51)
 
 Panic recovery, the four schema fixes, `actiontypes` package, ipify timeout with `last_known_public_ip.json` first, fatal exit on a bound metrics port, UTC date for validator latency files. Discovery during the work: the round-advance events live in the consensus log as `["round advance", ...]`, and the standalone monitor was never launched. That retired a whole planned rewrite two phases early. Review caught unwrapped goroutines inside `peermon/prober.go`, the exact failure mode the phase existed to close.
 
-### 4.3 Phase 2: perf and tailing (`1696ea7`, 23:28)
+### 4.3 Phase 2: perf and tailing (`7a8ae72`, 23:28)
 
 `LatestFile` and the cache, no forced GC, MemStats from a 30 s snapshot, drain-before-rollover for the four polled tailers, seeding with counters suppressed on restart. Two review legs independently found a real regression: the name sort fell back to lexicographic order for non-integer names, and `periodic_abci_states` holds `<height>.rmp`, so a stale snapshot would win at every digit boundary. Fixed with numeric-stem parsing.
 
-### 4.4 Phases 3 to 5, unattended (`42b119e`, `28c558d`, `6911bde`, 00:39 to 01:28)
+### 4.4 Phases 3 to 5, unattended (`1743a77`, `0cd6e07`, `a73895e`, 00:39 to 01:28)
 
 Run back to back in one session on an explicit go-ahead. Phase 3: JSON-decoder operation counting, proposer name from the validator info cache, vote age at scrape time, bounded signer tracking, validator series reconciliation, then the sweep deletion. Phase 4: gossip allowlist, EWMA parent selection, shared tcp_traffic snapshot with a strict row parser and two-sample admission gate, persisted peer set loaded synchronously and validated. Phase 5: six monitors from upstream, with `RegisterSource` and `MarkSource*` calls stripped and replaced by our envelope. The orientation agent for phase N+1 ran while phase N's reviews were still open, which is where most of the wall-clock saving came from.
 
-### 4.5 Phase 6: infra and routines (`2e0bc49` through `2fabd92`, 09:15 to 10:36)
+### 4.5 Phase 6: infra and routines (`9c24e72` through `d395de2`, 09:15 to 10:36)
 
 CI was benchmarked against sibling repos rather than upstream: govulncheck, read-only token, ref guard and smoke test were taken; arm64, dependabot, SHA pins, staticcheck, actionlint and `go mod tidy -diff` were rejected. Alert rules (managed centrally) and generated metric docs (too much machinery) were dropped outright. The torn-line tailer, which had no phase in the plan, was pulled in here because a parse-error counter is meaningless while torn lines count as parse errors. Then the three leftovers landed in the order the user chose: heartbeat ack join on `{randomID, round}` (`heartbeatKey`, `internal/monitors/consensus_monitor.go:36`), hl-visor update check behind `--binary-metrics`, crit_msg monitor. Listener timeouts and the in-flight cap closed the phase.
 
 ### 4.6 Triage and live verification (10:19 to 11:02)
 
-Every remaining item was marked deferred or scratched. One hour on the mainnet non-validator produced the verification verdict in section 6 and the final fix commit `8d1e2eb`.
+Every remaining item was marked deferred or scratched. One hour on the mainnet non-validator produced the verification verdict in section 6 and the peer and EVM timestamp fixes folded into `d395de2`.
 
 ## 5. Design Choices
 
@@ -123,7 +123,7 @@ Both defects were pre-existing, not regressions, and neither was flagged by any 
 ## 8. Follow-Ups and Known Debt
 
 - **Validator verification** (open): validator count, timeout rounds, signer mapping, one order counts as one operation, jailing threshold, CPU under 20% on a validator. Also the first live schema-watch pull from a validator so `testdata/schema/` is refreshed from real lines.
-- **Review debt:** `7ab2f4a`, `0fa9c7d`, `59f0958`, `2fabd92` and `8d1e2eb` shipped without the second-engine review the recipe calls for.
+- **Review debt:** the heartbeat ack join in `a9b9fdd`, all of `da6cfab` and `d395de2` shipped without the second-engine review the recipe calls for.
 - **Deferred with spec retained:** consensus per-line lock batching (revisit only if a validator measurement shows the consensus stream hot), `snapshot_status` and `accumulator_consensus` monitors, build info plus `/livez`, `/readyz` and `--pprof` on the metrics listener, CI survey of the remaining sibling repos.
 - **Scratched:** `info_probe` and six trivial upstream monitors (covered by the envelope or no operator ask), the pre-change CPU baseline.
 - **Charm flags** for the new monitors: `docs/TODO.md` T1.

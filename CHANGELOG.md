@@ -7,69 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Ports upstream v3.0.0 to v4.1.1; see the [port report](docs/reports/upstream-port-v3-to-v4.md). Every metric below is documented in the [metrics reference](docs/metrics-overview.md).
+
+**Upgrading:**
+
+- Remove `--contract-metrics` and `--contract-metrics-limit` from service args; they now fail to parse
+- Seven new node-host monitors are on by default (see Added); disable individually with `--<flag>=false`
+- Per-`peer_ip` gossip series now require `--peer-latency`
+- `hl_core_operations_total` rate drops 2 to 6x (it was overcounting), and `category` moves `spotDeploy` and `perpDeploy` to `deployment`
+- `hl_consensus_vote_time_diff_seconds` now means vote age at scrape time, not parse lag
+
 ### Added
 
-- Six node-host monitors ported from upstream v4.1.1 under upstream metric names, each on by default and disabled with `--<flag>=false`:
-  - `--process-metrics`: `hl_node_process_*` liveness, CPU, memory, threads, file descriptors and IO deltas for `hl-node` and `hl-visor` from `/proc`
-  - `--child-stderr-metrics`: `hl_node_child_starts`, `hl_node_child_crashes{reason}`, `hl_node_child_last_crash_seconds{reason}` and `hl_node_child_stderr_artifacts{state,reason}` from `data/visor_child_stderr`, with the `app_hash_mismatch`, `hardfork_upgrade`, `sync_overflow`, `config_error`, `network`, `panic` taxonomy
-  - `--visor-metrics`: `hl_visor_height`, `hl_visor_initial_height`, `hl_visor_blocks_applied`, `hl_visor_hardfork_version`, `hl_visor_scheduled_freeze_height`, `hl_visor_consensus_ahead_of_wall_seconds`, `hl_visor_reference_lag_seconds` from `visor_abci_state.json`
-  - `--node-state-metrics`: `hl_node_persisted_abci_height{source_class}`, `hl_node_persisted_abci_height_gap`, `hl_node_persisted_freeze_abci_height`, `hl_node_visor_height_above_persisted_freeze` and `hl_node_persisted_state_file_available{file}` from the single-integer files under `hyperliquid_data`
-  - `--disk-metrics`: `hl_node_disk_{used,allocated,free,total}_bytes`, `hl_node_disk_subdir_bytes{subdir}`, `hl_node_disk_subdir_allocated_bytes{path}`, `hl_node_disk_path_state{path,state}` and `hl_node_disk_last_complete_timestamp_seconds` from a 120 s walk of `NODE_HOME`
-  - `--operator-config-metrics` (validator nodes only): `hl_node_operator_config_{present,age_seconds,failed_load}{file}` from `file_mod_time_tracker/`, and `hl_node_jailing_threshold_seconds` and `hl_node_jailing_dry_run` from `heartbeat_jailing_config.json`
-- `hl_exporter_source_errors_total{stream,stage}` for non-parse source failures (stat, read, walk, statfs, decode, schema). The source-health envelope (`hl_exporter_source_up`, `hl_exporter_source_sample_age_seconds`) now also covers the `process`, `child_stderr`, `visor`, `node_state`, `disk` and `operator_config` streams
-- `hl_p2p_gossip_events_total{event_type}` and `hl_p2p_gossip_unknown_events_total`: gossip_connections events are matched against the 15-tag allowlist from upstream v4.1.1 with per-tag payload validation (both the pre- and post-2026-08 shapes of `closing gossip stream because no quorum yet`, `dropping connection after sending abci state`, `sending evm kvs` and `marking node_ip as verified` are accepted). Unknown tags land in `other` and bump the unknown counter, so hl-node adding an event type is visible
-- `hl_exporter_source_up{stream}`, `hl_exporter_source_sample_age_seconds{stream}` and `hl_exporter_parse_errors_total{stream,stage}` for the `gossip_rpc`, `gossip_connections` and `tcp_traffic` streams. "No peers" and "source unreadable" were previously indistinguishable. The generalized parse-error counter stands in for upstream's per-stream `hl_p2p_gossip_parse_errors_total`; use `stream="gossip_connections"`
-- `hl_node_parent_peer_share_ratio` and `hl_node_parent_peer_challenger_ratio` expose the evidence behind the current parent choice
-- `hl_exporter_monitor_panics_total{monitor}`: every monitor goroutine now runs with panic recovery. A panic is logged with its stack and counted instead of killing the process
-- `hl_timeout_rounds_total` is now actually populated: the consensus log's `["round advance", ...]` events are parsed in the consensus monitor. The previous standalone round-advance monitor read the wrong stream and was never started. Both the legacy string reason and the current tagged-object reason (`{"Tc": {...}}`) are accepted; `suspect` carries hl-node's enum (e.g. `NoVote`)
-- `internal/actiontypes`: bounded action-type vocabulary ported from upstream v4.0.7, adding `outcomeDeploy` and `trailingStop`. Unknown action types are reported as `other` instead of becoming raw labels
-- EVM `block_type` gained a `small` bucket for 3M gas-limit blocks; unexpected gas limits no longer log a warning per block
+- **Node host monitors**, ported under upstream metric names ([reference](docs/metrics-overview.md#node-host-metrics)):
+  - `--process-metrics`: liveness, CPU, memory, threads, fds and IO for `hl-node` and `hl-visor` from `/proc`
+  - `--child-stderr-metrics`: child starts, crashes by reason and stderr artifacts from `data/visor_child_stderr`
+  - `--visor-metrics`: visor height, hardfork, scheduled freeze and lag from `visor_abci_state.json`
+  - `--node-state-metrics`: persisted ABCI and freeze heights from `hyperliquid_data`
+  - `--disk-metrics`: usage and per-subdir sizes from a 120 s walk of `NODE_HOME`
+  - `--operator-config-metrics` (validators only): operator config presence and age, jailing config
+  - `--crit-msg-metrics`: bug and crit counters and the top 32 crit locations from `data/crit_msg_stats`
+- `--binary-metrics` (default off): `hl_software_up_to_date` compares local hl-visor against the CDN-published one via ETag conditional fetch
+- **Source health** for every consumed stream: `hl_exporter_source_up`, `hl_exporter_source_sample_age_seconds`, `hl_exporter_parse_errors_total` and `hl_exporter_source_errors_total`. A rising parse-error count on a healthy node means hl-node changed a log shape. `hl_exporter_parse_errors_total{stream="gossip_connections"}` stands in for upstream's `hl_p2p_gossip_parse_errors_total`
+- `hl_exporter_monitor_panics_total{monitor}`: monitor panics are recovered, logged and counted instead of killing the process
+- `hl_p2p_gossip_events_total{event_type}` and `hl_p2p_gossip_unknown_events_total`: gossip events checked against upstream's 15-tag allowlist
+- `hl_node_parent_peer_share_ratio` and `hl_node_parent_peer_challenger_ratio`: evidence behind the parent choice
+- `hl_consensus_heartbeat_ack_ambiguous_total`: acks that match more than one heartbeat are dropped and counted
+- Action types `outcomeDeploy` and `trailingStop`; unknown types report as `other` instead of raw labels
+- EVM `block_type="small"` for 3M gas-limit blocks
+- **Tooling**: `TestSchemaFixtures` schema-drift test with [schema watch](docs/operations/hl-node-schema-watch.md) and [upstream sync](docs/operations/upstream-sync.md) routines; govulncheck in CI; releases only from `main`
 
 ### Changed
 
-- The metrics listener sets `ReadHeaderTimeout` (5 s), `WriteTimeout` (35 s) and `IdleTimeout` (60 s) and serves at most 5 scrapes at once; further scrapes get 503. Previously a slow or stalled client could hold a connection open indefinitely
-- `hl_software_version` re-runs `hl-node --version` only when the binary's mtime changes instead of copying and executing it every 30 minutes. The version monitor stays on by default; it reads only the local binary. `BINARY_HOME` is now carried in the config (it was parsed but dropped)
-- Block, consensus, status, replica, EVM and proposal log tailers share one implementation that keeps a torn trailing line until its newline arrives and drains the previous hour file before switching. Previously each tailer discarded the partial line it had already consumed at EOF, losing one record per file boundary, and dropped any line written to the old file after the rollover check
-- Latest-file resolution no longer walks whole log trees. `utils.LatestFile` descends into the greatest-named entry at each level (`os.ReadDir`), and tailers in EOF loops re-resolve at most every 2 s. Upstream measured about 195% CPU from the previous `filepath.Walk` in 10 ms loops
-- Metrics cleanup no longer forces a garbage collection every 30 s, and Go memory gauges are served from a snapshot refreshed every 30 s instead of calling `runtime.ReadMemStats` on every scrape
-- Gossip, gossip connections, outbound peer and parent peer tailers drain the previous hour file once more before switching to the new one, so lines written just before rollover are not lost
-- Gossip and gossip connections monitors seed from the current hour on restart with counters suppressed, matching the tcp_traffic readers. `hl_p2p_incoming_requests_total`, `hl_p2p_stream_connections_total` and `hl_p2p_verifications_total` no longer replay up to an hour of increments on every restart
-- Child peer state is reconciled per `child_peers status` snapshot instead of accumulating across all snapshots in a poll
-- Parent peer selection is stable: per-IP inbound volume is aggregated across ports and smoothed with an EWMA (alpha 0.3), a challenger needs 1.2x the incumbent's smoothed value to take over, exact ties break on the lowest IP, and the parent is cleared after 90 s without inbound traffic. Previously the largest single-sample flow won each poll and ties depended on map iteration order. The ambiguity warning log is replaced by the challenger ratio gauge. `hl_node_parent_peer_traffic_volume_total` now accrues to the selected parent rather than the per-line top flow
-- `tcp_traffic` is parsed once per poll and shared by peer discovery and parent selection. The parser is strict: any malformed row rejects the whole record (arity, IP via `netip` with IPv4-mapped addresses unmapped, port, NaN/Inf/negative values, unknown direction), counted in `hl_exporter_parse_errors_total{stream="tcp_traffic"}`
-- Peers discovered from `tcp_traffic` are admitted to the latency set only after two consecutive samples with positive traffic while in the top 16 endpoints of their direction. Previously every endpoint in every sample was registered, including zero-volume ones
-- The peer prober tries the port observed in `tcp_traffic` before the fallback list when a peer has no probe-proven port yet
-- Per-`peer_ip` gossip series (`hl_p2p_incoming_requests_total`, `hl_p2p_incoming_peer_last_seen`, `hl_p2p_child_peer_connected`, `hl_p2p_child_peer_connections`, `hl_p2p_stream_connections_total`, `hl_p2p_verifications_total`) are published only with `--peer-latency`. Without the flag they created unbounded label cardinality with no consumer; aggregate gauges are unaffected
-- Public IP lookup reads `$NODE_HOME/last_known_public_ip.json` first and falls back to ipify with a 5 s timeout. Failure logs a warning instead of aborting startup
-- `--crit-msg-metrics` (default on): `hl_node_bugs`, `hl_node_crits`, `hl_node_crit_locations`, `hl_node_critical_messages_base_time_seconds` and `hl_node_critical_message_sample_timestamp_seconds` per `source` (`hl-node`, `hl-visor`) from `data/crit_msg_stats`, and `hl_node_crit_location{file,line}`, `hl_node_crit_location_ignored` and `hl_node_crit_location_last_seen_seconds` for the top 32 locations in hl-visor's rich document, published only while it matches the daily record's process generation. Ported from upstream v4.1.1 under upstream names
-- `--binary-metrics` (default off): `hl_software_up_to_date` now compares the local hl-visor against the hl-visor published on the Hyperliquid CDN, fetched with an ETag conditional request so the binary is downloaded only when it changes. Previously the checker downloaded hl-visor with curl every 30 minutes and compared it against the local hl-node commit, which reads as outdated whenever hl-visor has auto-updated its child. The check is idle, with the gauge unset, when `$BINARY_HOME/hl-visor` does not exist
-- `hl_consensus_heartbeat_ack_ambiguous_total`: heartbeat acknowledgements are joined to a unique outgoing heartbeat by random ID and round instead of random ID alone. hl-node reuses random IDs across rounds, so acks previously attached to whichever heartbeat was registered last. Acks that fit more than one heartbeat are dropped and counted; a responder's repeat ack of the same heartbeat and acks that predate the heartbeat are dropped silently. The `random_id` field is decoded as an unsigned 64-bit integer; as a float it lost precision above 2^53
-- The source-health envelope (`hl_exporter_source_up`, `hl_exporter_source_sample_age_seconds`, `hl_exporter_parse_errors_total`, `hl_exporter_source_errors_total`) now covers every hl-node log stream: `node_fast_block_times`, `node_slow_block_times`, `block_times`, `consensus`, `status`, `validator_status`, `replica_cmds` and `evm_block_and_receipts`. A rising parse-error counter on a healthy node means hl-node changed a log shape
-- `TestSchemaFixtures` runs every stream parser over committed samples under `internal/monitors/testdata/schema/` and over gitignored live pulls under `testdata/live/`, failing on any rejected line, unknown gossip tag or unknown action type. `docs/operations/hl-node-schema-watch.md` describes the routine; `docs/operations/upstream-sync.md` describes the upstream review routine
-- CI and release workflows run govulncheck, use a read-only token outside the release job, refuse to release from any ref other than `main`, queue concurrent releases, smoke-test the built binary's `--version`, and read the Go version from `go.mod`
-- A metrics port that cannot be bound now fails startup with a non-zero exit instead of leaving a metric-less process running
-- Validator latency files are keyed by UTC date, matching hl-node, instead of local time
-- Operation `category` labels follow the upstream mapping: `spotDeploy` moved from `transfer` to `deployment`, `perpDeploy` from `other` to `deployment`
-- `hl_consensus_vote_time_diff_seconds` now reports the age of the last observed vote at scrape time (now minus the vote's log timestamp) and drops validators silent for 24 h. Previously it recorded the exporter's own parse lag per vote and sat near zero forever
-- Per-validator series (stake, jailed, active, RTT, QC participation, vote round, vote age, heartbeat status, latency, latency round, latency EMA) are removed when a validator leaves the set returned by the validator API. Latency series are also removed when a validator's latency directory disappears. Previously they froze at their last value
-- The 30 s labeled-series sweep that capped every labeled family at 200 entries by recency is removed. Above 200 validators it dropped stake, jailed and latency series every 30 s. Peer and connectivity series already remove themselves, and validator series are now reconciled explicitly
-- Consensus monitor signer tracking is bounded: signers unseen in a QC for 1 h are pruned every 10 min, and the signer-to-validator memo is an LRU with 1 h TTL. The unused TC vote counter map is removed
+- **Peers**
+  - Parent selection is stable: per-IP EWMA of inbound volume, 1.2x challenger threshold, lowest-IP tiebreak, cleared after 90 s idle. `hl_node_parent_peer_traffic_volume_total` accrues to the selected parent
+  - `tcp_traffic` is parsed once per poll with a strict parser; a malformed row rejects the record
+  - Peers from `tcp_traffic` need two consecutive positive-traffic samples in their direction's top 16 before admission; the prober tries the observed port first
+  - Per-`peer_ip` gossip series publish only with `--peer-latency`, removing unbounded cardinality without it
+- **Consensus and validators**
+  - `hl_consensus_vote_time_diff_seconds` reports the age of each validator's last vote at scrape time and drops validators silent for 24 h
+  - Per-validator series are removed when a validator leaves the set instead of freezing at their last value
+  - Operation `category`: `spotDeploy` and `perpDeploy` move to `deployment`, matching upstream
+  - Validator latency files are keyed by UTC date, matching hl-node
+- **Runtime**
+  - Metrics listener has header, write and idle timeouts and serves at most 5 concurrent scrapes (503 beyond)
+  - An unbindable metrics port exits non-zero instead of running without metrics
+  - Public IP comes from `last_known_public_ip.json` first, then ipify with a 5 s timeout; failure warns instead of aborting startup
+  - Latest-file lookup no longer walks whole log trees (upstream measured ~195% CPU from `filepath.Walk`)
+  - `hl_software_version` re-runs `hl-node --version` only when the binary changes
+  - No forced GC every 30 s; Go memory gauges read a 30 s snapshot; consensus signer tracking is bounded
 
 ### Fixed
 
-- Peer admission rejects loopback, unspecified, multicast and link-local addresses and this host's own interface addresses. hl-node's `tcp_traffic` lists `127.0.0.1` and the node's own IP with real byte rates, so the exporter registered and probed itself
-- `hl_evm_last_high_gas_block_time` reported the Go zero time (-62135596800) because hl-node's zoneless line timestamp failed the RFC3339 parse; the EVM tailer now uses the shared visor time parser
-- `hl_core_operations_total` counted every comma inside an order, cancel or modify object as a separate operation, inflating counts 2 to 6x. Elements are now counted with a JSON decoder; one order is one operation. Expect the counter's rate to drop accordingly after upgrading
-- `hl_consensus_proposer_count_total` now carries the `name` label. The moniker lookup was stubbed to return an empty string
-- Status log `current_stakes` wrapped as `{"validator_to_stake": [...]}` (hl-node builds since mid-2026) is now decoded; previously the validator set and signer mappings silently came up empty on current nodes
-- Status log lines over 64 KiB no longer fail to read; the last-line scanner buffer is raised to 8 MiB
-- Consensus wrapper identity under the new `sender` key (hl-node builds since 2026-09) is accepted alongside the old `source` key, restoring heartbeat ack attribution
-- Validator latency reader resets its offset when the file is truncated or replaced in place, not only when the date changes
-- The persisted peer set is loaded before any log producer can register a peer, and loading skips invalid IPs and entries unseen for over 48 h instead of overwriting a fresher in-memory entry
+- **Metric values**
+  - `hl_core_operations_total` counted commas inside order objects as operations, inflating counts 2 to 6x
+  - `hl_timeout_rounds_total` was never populated; round-advance events are now parsed from the consensus log
+  - `hl_consensus_proposer_count_total` had an empty `name` label
+  - `hl_evm_last_high_gas_block_time` reported the Go zero time on zoneless timestamps
+  - Heartbeat acks attached to the wrong heartbeat when hl-node reused random IDs across rounds, and `random_id` lost precision above 2^53
+  - Gossip counters replayed up to an hour of increments on every restart
+  - Above 200 validators, a 30 s labeled-series sweep dropped stake, jailed and latency series; the sweep is removed
+- **Log ingestion**
+  - Tailers lost one record per file boundary and lines written just before hourly rollover; torn lines are now held and the old file drained
+  - Status `current_stakes` wrapped as `{"validator_to_stake": [...]}` left the validator set empty on current hl-node builds
+  - Consensus identity under the new `sender` key broke heartbeat ack attribution
+  - Status lines over 64 KiB failed to read
+  - Validator latency reader missed in-place truncation or replacement
+- **Peers**
+  - Loopback, link-local, multicast, unspecified and own-interface addresses were registered and probed
+  - Persisted peer set could overwrite fresher in-memory entries and kept invalid or 48 h stale entries
+  - Child peer state accumulated across snapshots within a poll
 
 ### Removed
 
-- `--contract-metrics`, `--contract-metrics-limit`, the `hl_evm_contract_tx_total` metric, and the `internal/contracts/` resolver. Contract names came from Hyperscan's Blockscout API, which no longer exists (the domain redirects to hl.eco and Blockscout retired free per-instance APIs on 2026-07-01), so the feature failed at startup for every user. `hl_evm_contract_create_total` is unaffected. Service args still passing the removed flags fail to parse, drop them before upgrading
+- `--contract-metrics`, `--contract-metrics-limit`, `hl_evm_contract_tx_total` and the contract resolver: Hyperscan's Blockscout API no longer exists, so the feature failed at startup. `hl_evm_contract_create_total` is unaffected
 
 ## [2.4.0] - 2026-09-10
 

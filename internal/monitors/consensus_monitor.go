@@ -31,8 +31,9 @@ type qcWindowEntry struct {
 }
 
 // heartbeatKey identifies one outgoing heartbeat. hl-node reuses random IDs
-// across rounds, so the round is part of the identity; an ack without a round
-// (older builds) joins only when the random ID alone is unique.
+// across rounds, so the round is part of the identity. When either side has no
+// round (older builds), the join falls back to the random ID alone and only
+// succeeds when that is unique.
 type heartbeatKey struct {
 	randomID uint64
 	round    uint64
@@ -572,7 +573,7 @@ func (m *ConsensusMonitor) joinHeartbeatAck(ack *HeartbeatAckMessage, responder 
 		if candidate.randomID != ack.RandomID {
 			continue
 		}
-		if ack.Round != 0 && candidate.round != ack.Round {
+		if ack.Round != 0 && candidate.round != 0 && candidate.round != ack.Round {
 			continue
 		}
 		matches++

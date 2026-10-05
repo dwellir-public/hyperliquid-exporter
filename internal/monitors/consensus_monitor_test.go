@@ -361,6 +361,37 @@ func TestHeartbeatRoundFieldShapes(t *testing.T) {
 	}
 }
 
+// During a rollout one side may run a build that sends no round; the join
+// then falls back to the random ID in either direction.
+func TestHeartbeatJoinsAcrossBuilds(t *testing.T) {
+	for _, tc := range []struct{ name, out, ack string }{
+		{"round-less heartbeat, executed_round ack", ``, `,"executed_round":77`},
+		{"executed_round heartbeat, round-less ack", `,"executed_round":77`, ``},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newTestConsensusMonitor(t)
+			for _, l := range []string{
+				fmt.Sprintf(`["2026-10-02T08:15:10.000000000",["out",{"Heartbeat":{"validator":"0x1111","random_id":424%s}}]]`, tc.out),
+				fmt.Sprintf(`["2026-10-02T08:15:10.010000000",["in",{"sender":"0x2222","msg":{"HeartbeatAck":{"validator":"0x2222..2222","random_id":424%s}}}]]`, tc.ack),
+			} {
+				if err := m.processConsensusLine(l); err != nil {
+					t.Fatalf("%s: %v", l, err)
+				}
+			}
+			m.heartbeatsMutex.RLock()
+			defer m.heartbeatsMutex.RUnlock()
+			if len(m.heartbeats) != 1 {
+				t.Fatalf("heartbeats = %d, want 1", len(m.heartbeats))
+			}
+			for key, info := range m.heartbeats {
+				if _, ok := info.acked["0x2222"]; !ok {
+					t.Fatalf("ack did not join heartbeat %+v", key)
+				}
+			}
+		})
+	}
+}
+
 func TestHeartbeatRejectsInvalidRounds(t *testing.T) {
 	for _, fields := range []string{
 		`,"executed_round":null`, `,"executed_round":0`, `,"executed_round":-1`,

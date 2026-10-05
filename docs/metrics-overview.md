@@ -177,7 +177,7 @@ The above are available to all node types, while the below metrics require acces
 |--------|------|--------|-------------|--------------|
 | `hl_consensus_current_round` | Gauge | - | Current consensus round from block messages | Validator node |
 | `hl_consensus_heartbeat_ack_delay_ms` | Histogram | - | Delay between an outgoing heartbeat and each peer's acknowledgement, joined on random ID and round. Unlabeled on purpose; the pair is on `hl_consensus_heartbeat_ack_received_total` | Validator node |
-| `hl_consensus_heartbeat_ack_ambiguous_total` | Counter | - | Acknowledgements dropped because more than one outgoing heartbeat matched their random ID and round (acks from older builds carry no round) | Validator node |
+| `hl_consensus_heartbeat_ack_ambiguous_total` | Counter | - | Acknowledgements dropped because more than one outgoing heartbeat matched their random ID and round (heartbeats and acks from older builds carry no round, so the join falls back to the random ID) | Validator node |
 | `hl_consensus_heartbeat_ack_received_total` | Counter | `from_validator`, `to_validator`, `from_name`, `to_name` | Heartbeat acknowledgments between validator pairs | Validator node |
 | `hl_consensus_heartbeat_sent_total` | Counter | `validator`, `signer`, `name` | Total heartbeats sent by validators | Validator node |
 | `hl_consensus_heartbeat_status` | Gauge | `validator`, `signer`, `name`, `status_type` | Heartbeat health metrics (status_type: since_last_success, last_ack_duration) | Validator node |

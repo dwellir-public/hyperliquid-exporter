@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Ports upstream v4.1.2 to v4.1.4.
+
+### Fixed
+
+- `validatorL1Status` and `voteAbciDigest` actions were counted as `other` in `hl_core_tx_total` and `hl_core_operations_total`; they now have their own `type` label under the `governance` category
+- Heartbeat ack delays thinned out on hl-node builds that send `executed_round` instead of `round`; both are now read, and malformed, conflicting or duplicate round fields count as parse errors
+
 ## [2.5.0] - 2026-09-11
 
 Ports upstream v3.0.0 to v4.1.1; see the [port report](docs/reports/upstream-port-v3-to-v4.md). Every metric below is documented in the [metrics reference](docs/metrics-overview.md).

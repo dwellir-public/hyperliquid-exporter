@@ -140,6 +140,11 @@ For anyone tracing a ported item back to its upstream source (`git show <hash>` 
 | v4.0.7 | 2026-08-27 | `cd9e6aa`, `0af6b36` |
 | v4.1.0 | 2026-09-09 | `10cc834`, `706b52c`, `85ee802` |
 | v4.1.1 | 2026-09-10 | `d30125a`, `3be57c9`, `0ad0e88`, `88b74b3` |
+| v4.1.2 | 2026-09-26 | `5816feb` |
+| v4.1.3 | 2026-09-26 | `0fe7ea6`, `7ddc96f` |
+| v4.1.4 | 2026-10-02 | `a7ca9bb`, `e5c23df`, `1f8d81c` |
+
+**Addendum, 2026-10-05 (NOD-5173):** v4.1.2 to v4.1.4 ported on `chore/port-4.1.4`: the `validatorL1Status` and `voteAbciDigest` action types and heartbeat `executed_round` parsing with duplicate and conflict rejection. Unlike upstream, a heartbeat with no round field is still accepted, because older builds send none. Skipped: the grpc, x/net and x/text bumps (ours were already newer) and upstream's changelog-driven release notes (we use git-cliff).
 
 Upstream paths differ from ours: `cmd/hl-exporter`, `internal/evm/parser.go`, `internal/monitors/stream.go`, `internal/utils/latest_files.go`. Their rationale for each metric lives in `HL_NODE_METRICS_AUDIT.md`, migration notes in `UPGRADING.md`.
 

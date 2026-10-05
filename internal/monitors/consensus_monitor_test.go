@@ -336,6 +336,98 @@ func TestHeartbeatAckAmbiguousJoinDropped(t *testing.T) {
 	}
 }
 
+// Builds from October 2026 send executed_round instead of round; either keys
+// the join, and a heartbeat carrying both must agree.
+func TestHeartbeatRoundFieldShapes(t *testing.T) {
+	for _, fields := range []string{`"round":77`, `"executed_round":77`, `"round":77,"executed_round":77`} {
+		t.Run(fields, func(t *testing.T) {
+			m := newTestConsensusMonitor(t)
+			// a second heartbeat reusing the random ID makes a round-less join ambiguous
+			for _, l := range []string{
+				`["2026-10-02T08:15:09.000000000",["out",{"Heartbeat":{"validator":"0x1111","random_id":424,"round":76}}]]`,
+				fmt.Sprintf(`["2026-10-02T08:15:10.000000000",["out",{"Heartbeat":{"validator":"0x1111","random_id":424,%s}}]]`, fields),
+				fmt.Sprintf(`["2026-10-02T08:15:10.010000000",["in",{"sender":"0x2222","msg":{"HeartbeatAck":{"validator":"0x2222..2222","random_id":424,%s}}}]]`, fields),
+			} {
+				if err := m.processConsensusLine(l); err != nil {
+					t.Fatalf("%s: %v", l, err)
+				}
+			}
+			m.heartbeatsMutex.RLock()
+			defer m.heartbeatsMutex.RUnlock()
+			if _, ok := m.heartbeats[heartbeatKey{randomID: 424, round: 77}].acked["0x2222"]; !ok {
+				t.Fatal("ack did not join the round 77 heartbeat")
+			}
+		})
+	}
+}
+
+// During a rollout one side may run a build that sends no round; the join
+// then falls back to the random ID in either direction.
+func TestHeartbeatJoinsAcrossBuilds(t *testing.T) {
+	for _, tc := range []struct{ name, out, ack string }{
+		{"round-less heartbeat, executed_round ack", ``, `,"executed_round":77`},
+		{"executed_round heartbeat, round-less ack", `,"executed_round":77`, ``},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newTestConsensusMonitor(t)
+			for _, l := range []string{
+				fmt.Sprintf(`["2026-10-02T08:15:10.000000000",["out",{"Heartbeat":{"validator":"0x1111","random_id":424%s}}]]`, tc.out),
+				fmt.Sprintf(`["2026-10-02T08:15:10.010000000",["in",{"sender":"0x2222","msg":{"HeartbeatAck":{"validator":"0x2222..2222","random_id":424%s}}}]]`, tc.ack),
+			} {
+				if err := m.processConsensusLine(l); err != nil {
+					t.Fatalf("%s: %v", l, err)
+				}
+			}
+			m.heartbeatsMutex.RLock()
+			defer m.heartbeatsMutex.RUnlock()
+			if len(m.heartbeats) != 1 {
+				t.Fatalf("heartbeats = %d, want 1", len(m.heartbeats))
+			}
+			for key, info := range m.heartbeats {
+				if _, ok := info.acked["0x2222"]; !ok {
+					t.Fatalf("ack did not join heartbeat %+v", key)
+				}
+			}
+		})
+	}
+}
+
+func TestHeartbeatRejectsInvalidRounds(t *testing.T) {
+	for _, fields := range []string{
+		`,"executed_round":null`, `,"executed_round":0`, `,"executed_round":-1`,
+		`,"executed_round":"77"`, `,"executed_round":1.5`, `,"executed_round":18446744073709551616`,
+		`,"round":77,"executed_round":78`, `,"round":77,"executed_round":null`,
+		`,"round":77,"executed_round":0`, `,"round":null,"executed_round":77`,
+		`,"round":0,"executed_round":77`, `,"round":"77","executed_round":77`,
+		`,"round":"bad","round":77`, `,"round":"bad","Round":77`,
+		`,"round":77,"round":77`, `,"round":null,"round":77`,
+		`,"executed_round":77,"executed_round":78`,
+		`,"executed_round":77,"Executed_Round":77`,
+		`,"round":77,"executed_round":78,"executed_round":77`,
+	} {
+		for _, kind := range []string{"Heartbeat", "HeartbeatAck"} {
+			t.Run(kind+fields, func(t *testing.T) {
+				m := newTestConsensusMonitor(t)
+				key := heartbeatKey{randomID: 424, round: 77}
+				if kind == "HeartbeatAck" {
+					m.heartbeats[key] = heartbeatInfo{validator: "0x1111", timestamp: time.Date(2026, 10, 2, 8, 15, 9, 0, time.UTC)}
+				}
+				payload := fmt.Sprintf(`{"%s":{"validator":"0x1111","random_id":424%s}}`, kind, fields)
+				inner := `["out",` + payload + `]`
+				if kind == "HeartbeatAck" {
+					inner = `["in",{"sender":"0x2222","msg":` + payload + `}]`
+				}
+				if err := m.processConsensusLine(`["2026-10-02T08:15:10.000000000",` + inner + `]`); err == nil {
+					t.Fatal("accepted an invalid heartbeat round")
+				}
+				if len(m.heartbeats[key].acked) != 0 || (kind == "Heartbeat" && len(m.heartbeats) != 0) {
+					t.Fatal("rejected heartbeat changed correlation state")
+				}
+			})
+		}
+	}
+}
+
 func TestProcessStatusLine(t *testing.T) {
 	tests := []struct {
 		name    string

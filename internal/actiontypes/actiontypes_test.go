@@ -4,11 +4,13 @@ import "testing"
 
 func TestNormalize(t *testing.T) {
 	for raw, want := range map[string]string{
-		"order":         "order",
-		"outcomeDeploy": "outcomeDeploy",
-		"trailingStop":  "trailingStop",
-		"":              Other,
-		"bogusAction":   Other,
+		"order":             "order",
+		"outcomeDeploy":     "outcomeDeploy",
+		"trailingStop":      "trailingStop",
+		"validatorL1Status": "validatorL1Status",
+		"voteAbciDigest":    "voteAbciDigest",
+		"":                  Other,
+		"bogusAction":       Other,
 	} {
 		got, _ := Normalize(raw)
 		if got != want {
@@ -19,12 +21,14 @@ func TestNormalize(t *testing.T) {
 
 func TestCategory(t *testing.T) {
 	for action, want := range map[string]string{
-		"trailingStop":  "trading",
-		"outcomeDeploy": "deployment",
-		"order":         "trading",
-		"usdSend":       "transfer",
-		"noop":          "system",
-		Other:           Other,
+		"trailingStop":      "trading",
+		"outcomeDeploy":     "deployment",
+		"order":             "trading",
+		"usdSend":           "transfer",
+		"noop":              "system",
+		"validatorL1Status": "governance",
+		"voteAbciDigest":    "governance",
+		Other:               Other,
 	} {
 		if got := Category(action); got != want {
 			t.Errorf("Category(%q) = %q, want %q", action, got, want)

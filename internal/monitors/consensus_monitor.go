@@ -31,8 +31,9 @@ type qcWindowEntry struct {
 }
 
 // heartbeatKey identifies one outgoing heartbeat. hl-node reuses random IDs
-// across rounds, so the round is part of the identity; an ack without a round
-// (older builds) joins only when the random ID alone is unique.
+// across rounds, so the round is part of the identity. When either side has no
+// round (older builds), the join falls back to the random ID alone and only
+// succeeds when that is unique.
 type heartbeatKey struct {
 	randomID uint64
 	round    uint64
@@ -312,9 +313,10 @@ func (m *ConsensusMonitor) processConsensusLine(line string) error {
 		}
 		if err := json.Unmarshal(msgData, &msg); err == nil && len(msg.Heartbeat) > 0 {
 			var hbMsg HeartbeatMessage
-			if err := json.Unmarshal(msg.Heartbeat, &hbMsg); err == nil {
-				return m.processHeartbeatOut(&hbMsg, parsedTime)
+			if err := json.Unmarshal(msg.Heartbeat, &hbMsg); err != nil {
+				return err
 			}
+			return m.processHeartbeatOut(&hbMsg, parsedTime)
 		}
 	} else if bytes.Contains(msgData, []byte(`"HeartbeatAck"`)) && direction == "in" {
 		// Handle HeartbeatAck which might be in wrapper structure
@@ -323,9 +325,10 @@ func (m *ConsensusMonitor) processConsensusLine(line string) error {
 		}
 		if err := json.Unmarshal(msgData, &msg); err == nil && len(msg.HeartbeatAck) > 0 {
 			var ackMsg HeartbeatAckMessage
-			if err := json.Unmarshal(msg.HeartbeatAck, &ackMsg); err == nil {
-				return m.processHeartbeatAck(&ackMsg, wrapper.Source, parsedTime)
+			if err := json.Unmarshal(msg.HeartbeatAck, &ackMsg); err != nil {
+				return err
 			}
+			return m.processHeartbeatAck(&ackMsg, wrapper.Source, parsedTime)
 		}
 	}
 
@@ -570,7 +573,7 @@ func (m *ConsensusMonitor) joinHeartbeatAck(ack *HeartbeatAckMessage, responder 
 		if candidate.randomID != ack.RandomID {
 			continue
 		}
-		if ack.Round != 0 && candidate.round != ack.Round {
+		if ack.Round != 0 && candidate.round != 0 && candidate.round != ack.Round {
 			continue
 		}
 		matches++

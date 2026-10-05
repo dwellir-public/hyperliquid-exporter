@@ -312,9 +312,10 @@ func (m *ConsensusMonitor) processConsensusLine(line string) error {
 		}
 		if err := json.Unmarshal(msgData, &msg); err == nil && len(msg.Heartbeat) > 0 {
 			var hbMsg HeartbeatMessage
-			if err := json.Unmarshal(msg.Heartbeat, &hbMsg); err == nil {
-				return m.processHeartbeatOut(&hbMsg, parsedTime)
+			if err := json.Unmarshal(msg.Heartbeat, &hbMsg); err != nil {
+				return err
 			}
+			return m.processHeartbeatOut(&hbMsg, parsedTime)
 		}
 	} else if bytes.Contains(msgData, []byte(`"HeartbeatAck"`)) && direction == "in" {
 		// Handle HeartbeatAck which might be in wrapper structure
@@ -323,9 +324,10 @@ func (m *ConsensusMonitor) processConsensusLine(line string) error {
 		}
 		if err := json.Unmarshal(msgData, &msg); err == nil && len(msg.HeartbeatAck) > 0 {
 			var ackMsg HeartbeatAckMessage
-			if err := json.Unmarshal(msg.HeartbeatAck, &ackMsg); err == nil {
-				return m.processHeartbeatAck(&ackMsg, wrapper.Source, parsedTime)
+			if err := json.Unmarshal(msg.HeartbeatAck, &ackMsg); err != nil {
+				return err
 			}
+			return m.processHeartbeatAck(&ackMsg, wrapper.Source, parsedTime)
 		}
 	}
 

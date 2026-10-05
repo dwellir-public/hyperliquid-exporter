@@ -49,6 +49,7 @@ func TestReadJailingConfig(t *testing.T) {
 }
 
 func TestScanOperatorConfig(t *testing.T) {
+	initTestMetrics(t)
 	root := t.TempDir()
 	now := time.Now()
 	write := func(name, body string, age time.Duration) {

@@ -27,6 +27,10 @@ including the package provisioning and independent exporter-state changes.
 - The installed documentation includes the principal-charm integration contract.
   Both referenced charms were inspected to establish runtime paths, ACL grants,
   legacy unit precedence and scrape-publication responsibilities.
+- The configuration reference covers all 20 declared start flags. Systemd
+  successfully parsed the commented template with all six active settings at
+  their original defaults. A rebuilt archive contained the exact template as
+  the mode 0600 conffile and mode 0644 reference copy in the documentation.
 
 Arm64 package construction is covered by the new native CI job and was not
 run locally. No package was uploaded to Cloudsmith. The tests do not prove

@@ -92,3 +92,8 @@ This repository is a fork of [validaoxyz/hyperliquid-exporter](https://github.co
 Build an Ubuntu 24.04 package with `make deb`. See
 [the packaging guide](packaging/ubuntu/README.md) for prerequisites, installation,
 systemd configuration and future publication to Dwellir's Cloudsmith repositories.
+
+The package installs a [commented configuration template](packaging/ubuntu/config)
+at `/etc/default/hyperliquid-exporter`. The guide lists
+[every environment setting and supported exporter flag](packaging/ubuntu/README.md#environment-file-settings),
+with defaults and examples.

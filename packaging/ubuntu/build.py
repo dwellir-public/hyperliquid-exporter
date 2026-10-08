@@ -105,6 +105,7 @@ def main():
         doc = payload / "usr/share/doc" / PACKAGE
         install(REPO / "LICENSE", doc / "copyright")
         install(HERE / "README.md", doc / "README.packaging")
+        install(HERE / "config", doc / "config")
         install(HERE / "charm-integration.md", doc / "charm-integration.md")
         doc.joinpath("build-info.json").write_text(json.dumps(provenance, indent=2) + "\n")
         replacements = {"@PACKAGE@": PACKAGE, "@SERVICE@": NAME,

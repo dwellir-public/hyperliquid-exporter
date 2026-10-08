@@ -1,0 +1,9 @@
+# systemd EnvironmentFile syntax, not a shell script.
+CHAIN=mainnet
+# Keep this symlink path so optional peer-cache writes stay in exporter state.
+NODE_HOME=/var/lib/hyperliquid-exporter/hl
+# Adjust to the existing hl-node executable, not hl-visor.
+NODE_BINARY=/home/ubuntu/hl-node
+# If enabling --binary-metrics, also set BINARY_HOME to the hl-visor directory.
+# Example: EXPORTER_ARGS="--evm-metrics --replica-metrics --peer-latency"
+EXPORTER_ARGS=

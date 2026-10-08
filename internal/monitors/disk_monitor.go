@@ -162,7 +162,13 @@ func publishDisk(snapshot diskSnapshot, completedAt time.Time) {
 // scope. Any walk or metadata error rejects the whole snapshot so a
 // plausible-looking partial total is never published.
 func walkSizes(nodeHome string, subs []string) (diskSnapshot, error) {
-	return walkSizesWith(nodeHome, subs, filepath.WalkDir)
+	// Package deployments may point NODE_HOME at a symlink so exporter state
+	// stays separate from node data. WalkDir does not follow a root symlink.
+	root, err := filepath.EvalSymlinks(nodeHome)
+	if err != nil {
+		return diskSnapshot{}, err
+	}
+	return walkSizesWith(root, subs, filepath.WalkDir)
 }
 
 type walkDirFunc func(string, fs.WalkDirFunc) error

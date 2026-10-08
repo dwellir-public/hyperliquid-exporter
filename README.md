@@ -86,3 +86,9 @@ In production, `hyperliquid-exporter` is deployed as a systemd service via the
 ## Relation to upstream
 
 This repository is a fork of [validaoxyz/hyperliquid-exporter](https://github.com/validaoxyz/hyperliquid-exporter) and is intentionally divergent. It keeps its own metric names, adds peer latency monitoring, and ports upstream changes by hand on a schedule rather than tracking upstream releases. The 2026-09 port of upstream v3.0.0 to v4.1.1 is recorded in [docs/reports/upstream-port-v3-to-v4.md](docs/reports/upstream-port-v3-to-v4.md).
+
+## Debian packaging
+
+Build an Ubuntu 24.04 package with `make deb`. See
+[the packaging guide](packaging/ubuntu/README.md) for prerequisites, installation,
+systemd configuration and future publication to Dwellir's Cloudsmith repositories.

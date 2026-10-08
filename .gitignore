@@ -5,6 +5,8 @@
 /hyperliquid-exporter
 /hyperliquid-exporter-*
 bin/
+dist/
+__pycache__/
 
 # Ignore hl-python-venv directory
 hl-python-venv/

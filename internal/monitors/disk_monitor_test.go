@@ -15,6 +15,26 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/metrics"
 )
 
+func TestWalkSizesFollowsNodeHomeSymlink(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, "data", "replica_cmds")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "block"), []byte("block data"), 0o644))
+	// Internal links must still be counted as links, never followed outside NODE_HOME.
+	external := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(external, "outside"), make([]byte, 1024), 0o644))
+	require.NoError(t, os.Symlink(external, filepath.Join(home, "external")))
+	link := filepath.Join(t.TempDir(), "hl")
+	require.NoError(t, os.Symlink(home, link))
+	want, err := walkSizes(home, trackedSubdirs)
+	require.NoError(t, err)
+	got, err := walkSizes(link, trackedSubdirs)
+	require.NoError(t, err)
+	assert.Equal(t, want, got)
+	assert.Equal(t, int64(len("block data")), got.apparentByPath["data/replica_cmds"])
+	assert.Equal(t, int64(len("block data")+len(external)), got.apparentTotal)
+}
+
 func TestWalkSizes(t *testing.T) {
 	home := t.TempDir()
 	write := func(rel string, n int) {

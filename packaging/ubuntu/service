@@ -1,0 +1,41 @@
+[Unit]
+Description=Hyperliquid node metrics exporter
+Documentation=https://github.com/dwellir-public/hyperliquid-exporter
+Wants=network-online.target
+After=network-online.target
+ConditionPathIsDirectory=/var/lib/hyperliquid-exporter/hl
+
+[Service]
+Type=simple
+User=hyperliquid-exporter
+Group=hyperliquid-exporter
+Environment=HOME=/var/lib/hyperliquid-exporter
+EnvironmentFile=/etc/hyperliquid-exporter/hyperliquid-exporter.conf
+ExecStart=/usr/bin/hyperliquid-exporter start --chain ${CHAIN} $EXPORTER_ARGS
+WorkingDirectory=/var/lib/hyperliquid-exporter
+StateDirectory=hyperliquid-exporter
+StateDirectoryMode=0700
+UMask=0077
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=30s
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+[Install]
+WantedBy=multi-user.target

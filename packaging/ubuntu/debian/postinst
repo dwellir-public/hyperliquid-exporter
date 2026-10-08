@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+
+if [ "$1" = configure ]; then
+    if ! getent passwd @PACKAGE@ >/dev/null; then
+        adduser --system --group --home /var/lib/@PACKAGE@ --no-create-home \
+            --shell /usr/sbin/nologin @PACKAGE@
+    fi
+    # Refuse an unrelated or privileged account rather than silently reusing it.
+    uid=$(id -u @PACKAGE@)
+    gid=$(id -g @PACKAGE@)
+    shell=$(getent passwd @PACKAGE@ | cut -d: -f7)
+    home=$(getent passwd @PACKAGE@ | cut -d: -f6)
+    group=$(id -gn @PACKAGE@)
+    groups=$(id -Gn @PACKAGE@)
+    if [ "$uid" -eq 0 ] || [ "$uid" -ge 1000 ] || [ "$gid" -eq 0 ] || \
+       [ "$shell" != /usr/sbin/nologin ] || [ "$home" != /var/lib/@PACKAGE@ ] || \
+       [ "$group" != @PACKAGE@ ] || [ "$groups" != @PACKAGE@ ]; then
+        echo 'Refusing unsafe existing @PACKAGE@ service account; inspect its UID, groups, home and shell.' >&2
+        exit 1
+    fi
+fi
+
+#DEBHELPER#

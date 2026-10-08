@@ -13,7 +13,7 @@ override_dh_installsystemd:
 
 override_dh_fixperms:
 	dh_fixperms
-	chmod 0600 debian/@PACKAGE@/etc/@PACKAGE@/@PACKAGE@.conf
+	chmod 0600 debian/@PACKAGE@/etc/default/@SERVICE@
 
 override_dh_strip:
 	dh_strip --no-automatic-dbgsym

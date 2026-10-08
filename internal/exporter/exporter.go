@@ -2,7 +2,6 @@ package exporter
 
 import (
 	"context"
-	"path/filepath"
 	"time"
 
 	"github.com/validaoxyz/hyperliquid-exporter/internal/config"
@@ -12,8 +11,6 @@ import (
 	"github.com/validaoxyz/hyperliquid-exporter/internal/peermon"
 	"github.com/validaoxyz/hyperliquid-exporter/internal/safego"
 )
-
-const persistentFilesDir = ".hyperliquid-exporter"
 
 func Start(ctx context.Context, cfg config.Config) {
 	logger.InfoComponent("system", "Starting Hyperliquid exporter...")
@@ -93,8 +90,7 @@ func Start(ctx context.Context, cfg config.Config) {
 	var peerMon *peermon.Monitor
 	if cfg.EnablePeerLatency {
 		logger.InfoComponent("peer-latency", "Initializing peer latency monitor...")
-		peerDataDir := filepath.Join(filepath.Dir(cfg.NodeHome), persistentFilesDir)
-		peerMon = peermon.New(peerDataDir)
+		peerMon = peermon.New(cfg.PeerDataDir())
 		peerMon.Load() // synchronously, before any producer registers
 		registerPeer = peerMon.Register
 		safego.Go("peer-latency", func() { peerMon.Start(monitorCtx, peerLatencyErrCh) })

@@ -2,23 +2,30 @@
 set -eu
 
 if [ "$1" = configure ]; then
-    if ! getent passwd @PACKAGE@ >/dev/null; then
-        adduser --system --group --home /var/lib/@PACKAGE@ --no-create-home \
-            --shell /usr/sbin/nologin @PACKAGE@
+    if ! getent passwd @SERVICE@ >/dev/null; then
+        adduser --system --group --home /var/lib/@SERVICE@ --no-create-home \
+            --shell /usr/sbin/nologin @SERVICE@
     fi
     # Refuse an unrelated or privileged account rather than silently reusing it.
-    uid=$(id -u @PACKAGE@)
-    gid=$(id -g @PACKAGE@)
-    shell=$(getent passwd @PACKAGE@ | cut -d: -f7)
-    home=$(getent passwd @PACKAGE@ | cut -d: -f6)
-    group=$(id -gn @PACKAGE@)
-    groups=$(id -Gn @PACKAGE@)
+    uid=$(id -u @SERVICE@)
+    gid=$(id -g @SERVICE@)
+    shell=$(getent passwd @SERVICE@ | cut -d: -f7)
+    home=$(getent passwd @SERVICE@ | cut -d: -f6)
+    group=$(id -gn @SERVICE@)
+    groups=$(id -Gn @SERVICE@)
     if [ "$uid" -eq 0 ] || [ "$uid" -ge 1000 ] || [ "$gid" -eq 0 ] || \
-       [ "$shell" != /usr/sbin/nologin ] || [ "$home" != /var/lib/@PACKAGE@ ] || \
-       [ "$group" != @PACKAGE@ ] || [ "$groups" != @PACKAGE@ ]; then
-        echo 'Refusing unsafe existing @PACKAGE@ service account; inspect its UID, groups, home and shell.' >&2
+       [ "$shell" != /usr/sbin/nologin ] || [ "$home" != /var/lib/@SERVICE@ ] || \
+       [ "$group" != @SERVICE@ ] || [ "$groups" != @SERVICE@ ]; then
+        echo 'Refusing unsafe existing @SERVICE@ service account; inspect its UID, groups, home and shell.' >&2
         exit 1
     fi
+    # Provision state during installation; operators and charms only configure
+    # the node paths. Do not follow an unexpected link into node data.
+    if [ -L /var/lib/@SERVICE@ ]; then
+        echo 'Refusing symlink at /var/lib/@SERVICE@' >&2
+        exit 1
+    fi
+    install -d -o @SERVICE@ -g @SERVICE@ -m 0700 /var/lib/@SERVICE@
 fi
 
 #DEBHELPER#

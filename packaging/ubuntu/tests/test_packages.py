@@ -12,6 +12,7 @@ import unittest
 
 PACKAGING = Path(__file__).resolve().parents[1]
 NAME = "hyperliquid-exporter"
+PACKAGE = "hyperliquid-metrics-exporter"
 
 
 class PackageTests(unittest.TestCase):
@@ -41,7 +42,7 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         archive = next((self.root / self._testMethodName).glob("*.deb"))
         control = subprocess.check_output(["dpkg-deb", "-f", str(archive)], text=True)
-        for field in (f"Package: {NAME}\n", "Version: 1.2.3-1\n", "libc6", "adduser", "ca-certificates"):
+        for field in (f"Package: {PACKAGE}\n", "Version: 1.2.3-1\n", "libc6", "adduser", "ca-certificates"):
             self.assertIn(field, control)
         unpacked = self.root / "unpacked"
         subprocess.run(["dpkg-deb", "-R", str(archive), str(unpacked)], check=True)
@@ -50,25 +51,29 @@ class PackageTests(unittest.TestCase):
             stream.seek(0)
             with tarfile.open(fileobj=stream) as payload:
                 self.assertTrue(all(m.uid == 0 and m.gid == 0 for m in payload.getmembers()))
-        config = unpacked / "etc" / NAME / f"{NAME}.conf"
+        config = unpacked / "etc/default" / NAME
         self.assertEqual(config.stat().st_mode & 0o777, 0o600)
-        self.assertIn(f"/etc/{NAME}/{NAME}.conf", (unpacked / "DEBIAN/conffiles").read_text())
+        self.assertIn(f"/etc/default/{NAME}", (unpacked / "DEBIAN/conffiles").read_text())
+        self.assertIn("EXPORTER_STATE_DIR=/var/lib/hyperliquid-exporter", config.read_text())
         unit = (unpacked / "usr/lib/systemd/system" / f"{NAME}.service").read_text()
         for setting in (f"User={NAME}", f"Group={NAME}", "ProtectSystem=strict",
-                        "ProtectHome=read-only", "NoNewPrivileges=yes", "CapabilityBoundingSet=\n"):
+                        "ProtectHome=read-only", "NoNewPrivileges=yes", "CapabilityBoundingSet=\n",
+                        f"EnvironmentFile=/etc/default/{NAME}"):
             self.assertIn(setting, unit)
+        self.assertNotIn("ConditionPathIsDirectory", unit)
         self.assertEqual(subprocess.check_output([str(unpacked / "usr/bin" / NAME)], text=True).strip(), "fixture")
         postinst = (unpacked / "DEBIAN/postinst").read_text()
         self.assertIn("try-restart", postinst)
         self.assertNotIn("deb-systemd-invoke start", postinst)
         self.assertIn("/usr/sbin/nologin", postinst)
+        self.assertIn("install -d", postinst)
         self.assertIn("stop", (unpacked / "DEBIAN/prerm").read_text())
         for script in ("postinst", "prerm", "postrm"):
             subprocess.run(["sh", "-n", str(unpacked / "DEBIAN" / script)], check=True)
         provenance = json.loads(archive.with_suffix(".deb.build-info.json").read_text())
         self.assertEqual(provenance["build_mode"], "prebuilt")
         self.assertEqual(provenance["input_binary_sha256"], hashlib.sha256(self.binary.read_bytes()).hexdigest())
-        self.assertEqual(provenance, json.loads((unpacked / "usr/share/doc" / NAME / "build-info.json").read_text()))
+        self.assertEqual(provenance, json.loads((unpacked / "usr/share/doc" / PACKAGE / "build-info.json").read_text()))
         self.assertEqual(archive.with_suffix(".deb.sha256").read_text(),
                          f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n")
         original = archive.read_bytes()

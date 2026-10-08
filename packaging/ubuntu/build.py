@@ -17,6 +17,7 @@ import tempfile
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 NAME = "hyperliquid-exporter"
+PACKAGE = "hyperliquid-metrics-exporter"
 
 
 def capture(*args, cwd=REPO):
@@ -63,14 +64,14 @@ def main():
     subprocess.run(["dpkg", "--validate-version", version], check=True)
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    artifact = output / f"{NAME}_{version}_{arch}.deb"
+    artifact = output / f"{PACKAGE}_{version}_{arch}.deb"
     outputs = [artifact, artifact.with_suffix(".deb.sha256"), artifact.with_suffix(".deb.build-info.json")]
     for path in outputs:
         if path.exists():
             parser.error(f"output already exists: {path}; use a new revision or output directory")
     commit = capture("git", "rev-parse", "HEAD")
     epoch = int(os.environ.get("SOURCE_DATE_EPOCH") or capture("git", "show", "-s", "--format=%ct", "HEAD"))
-    provenance = {"package": NAME, "version": version, "architecture": arch,
+    provenance = {"package": PACKAGE, "version": version, "architecture": arch,
                   "distribution": "ubuntu/noble", "build_mode": "prebuilt" if args.binary else "source",
                   "source_commit": commit,
                   "source_dirty": bool(capture("git", "status", "--porcelain", "--untracked-files=all")),
@@ -99,13 +100,15 @@ def main():
         debian.mkdir(parents=True)
         payload = package_root / "payload"
         install(binary, payload / "usr/bin" / NAME, 0o755)
-        install(HERE / "service", debian / f"{NAME}.service")
-        install(HERE / "config", payload / "etc" / NAME / f"{NAME}.conf", 0o600)
-        doc = payload / "usr/share/doc" / NAME
+        install(HERE / "service", payload / "usr/lib/systemd/system" / f"{NAME}.service")
+        install(HERE / "config", payload / "etc/default" / NAME, 0o600)
+        doc = payload / "usr/share/doc" / PACKAGE
         install(REPO / "LICENSE", doc / "copyright")
         install(HERE / "README.md", doc / "README.packaging")
+        install(HERE / "charm-integration.md", doc / "charm-integration.md")
         doc.joinpath("build-info.json").write_text(json.dumps(provenance, indent=2) + "\n")
-        replacements = {"@PACKAGE@": NAME, "@VERSION@": version, "@MAINTAINER@": args.maintainer,
+        replacements = {"@PACKAGE@": PACKAGE, "@SERVICE@": NAME,
+                        "@VERSION@": version, "@MAINTAINER@": args.maintainer,
                         "@DATE@": format_datetime(datetime.fromtimestamp(epoch, timezone.utc))}
         for template in (HERE / "debian").iterdir():
             content = template.read_text()

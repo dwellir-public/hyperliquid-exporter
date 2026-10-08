@@ -10,8 +10,9 @@ import urllib.request
 
 
 NAME = "hyperliquid-exporter"
+PACKAGE = "hyperliquid-metrics-exporter"
 STATE = Path("/var/lib") / NAME
-CONFIG = Path("/etc") / NAME / f"{NAME}.conf"
+CONFIG = Path("/etc/default") / NAME
 
 
 def run(*args):
@@ -56,15 +57,22 @@ def main():
     assert capture("id", "-Gn", NAME) == NAME
     assert CONFIG.stat().st_mode & 0o777 == 0o600
     assert CONFIG.stat().st_uid == 0
+    # APT alone must provision state, before any service start or charm setup.
+    assert STATE.is_dir() and not STATE.is_symlink()
+    assert STATE.stat().st_mode & 0o777 == 0o700
+    assert STATE.stat().st_uid == int(entry[2])
+    assert STATE.stat().st_gid == int(entry[3])
     run("systemd-analyze", "verify", f"/usr/lib/systemd/system/{NAME}.service")
-    run("install", "-d", "-o", NAME, "-g", NAME, "-m", "0700", str(STATE))
+    # Simulate the principal charm's custom private runtime home and ACL grant.
     node = Path("/home/node-fixture/hl")
-    node.mkdir(parents=True)
+    node.mkdir(parents=True, mode=0o700)
+    node.parent.chmod(0o700)
     sample = node / "sample"
     sample.write_text("node data\n")
-    (STATE / "hl").symlink_to(node)
-    config = CONFIG.read_text() + "\n# operator edit retained by upgrades\n"
-    CONFIG.write_text(config)
+    run("setfacl", "-m", f"u:{NAME}:--x", str(node.parent))
+    run("setfacl", "-R", "-m", f"u:{NAME}:r-X", str(node))
+    config = CONFIG.read_text().replace("NODE_HOME=/home/hyperliquid/hl", f"NODE_HOME={node}")
+    config += "\n# principal charm configuration retained by upgrades\n"
     # Run the real exporter against fixture files, then verify /metrics.
     CONFIG.write_text(config)
     run("systemctl", "start", NAME)
@@ -87,10 +95,12 @@ def main():
     probe = Path("/usr/local/lib/exporter-permission-probe")
     probe.parent.mkdir(parents=True, exist_ok=True)
     probe.write_text("#!/bin/sh\nset -eu\n"
-                     f"cat {STATE}/hl/sample >/dev/null\n"
-                     f"if touch {STATE}/hl/forbidden; then exit 1; fi\n"
+                     'cat "$NODE_HOME/sample" >/dev/null\n'
+                     'if touch "$NODE_HOME/forbidden"; then exit 1; fi\n'
                      "if touch /usr/bin/exporter-forbidden; then exit 1; fi\n"
                      f"if cat {CONFIG} >/dev/null 2>&1; then exit 1; fi\n"
+                     f'test "$EXPORTER_STATE_DIR" = "{STATE}"\n'
+                     'touch "$EXPORTER_STATE_DIR/peer-state-probe"\n'
                      f"touch {STATE}/probe-ok\nexec sleep infinity\n")
     probe.chmod(0o755)
     dropin = Path(f"/etc/systemd/system/{NAME}.service.d/probe.conf")
@@ -111,16 +121,16 @@ def main():
     assert CONFIG.read_text() == config
     run("systemctl", "start", NAME)
     wait_active()
-    run("apt-get", "remove", "-y", NAME)
+    run("apt-get", "remove", "-y", PACKAGE)
     assert not active()
     assert CONFIG.read_text() == config
-    assert (STATE / "hl").is_symlink()
-    run("apt-get", "purge", "-y", NAME)
+    assert (STATE / "peer-state-probe").exists()
+    run("apt-get", "purge", "-y", PACKAGE)
     assert not CONFIG.exists()
     assert capture("id", "-u", NAME) != "0"
     assert (STATE / "probe-ok").exists()
     assert sample.read_text() == "node data\n"
-    print("PASS: install, runtime metrics, sandbox, upgrades, remove and purge")
+    print("PASS: automatic provisioning, custom node paths and ACLs, runtime metrics, sandbox, upgrades, remove and purge")
 
 
 if __name__ == "__main__":

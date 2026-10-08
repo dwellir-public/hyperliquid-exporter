@@ -1,0 +1,57 @@
+# Hyperliquid exporter configuration, installed at /etc/default/hyperliquid-exporter.
+# Juju deployments: the principal Hyperliquid charm manages this file.
+# Standalone deployments: edit it, then restart hyperliquid-exporter.service.
+# APT preserves edits to this conffile on upgrade.
+#
+# Use systemd EnvironmentFile syntax: NAME=value, without "export".
+# Values do not expand shell variables: use absolute paths, not $HOME or ~.
+# See /usr/share/doc/hyperliquid-metrics-exporter/README.packaging for all flags.
+
+# Network: mainnet or testnet. The service passes this as --chain.
+CHAIN=mainnet
+
+# Existing node data directory. The exporter only needs read/search access.
+# Defaults match the Hyperliquid charm; change these for a custom runtime home.
+NODE_HOME=/home/hyperliquid/hl
+
+# Existing hl-node executable used for local node version metrics, not hl-visor.
+NODE_BINARY=/home/hyperliquid/hl-node
+
+# Directory containing hl-visor for --binary-metrics version checks.
+# Also supplies the NODE_BINARY fallback if NODE_BINARY is unset/empty.
+BINARY_HOME=/home/hyperliquid
+
+# Writable exporter persistence: --peer-latency stores peers.json here.
+# Keep the package default, which APT provisions and the unit permits writing.
+EXPORTER_STATE_DIR=/var/lib/hyperliquid-exporter
+
+# Extra "start" flags. Empty retains the application's monitor defaults.
+# Use --flag=false to disable a boolean, not "--flag false".
+# Keep chain and node paths in the variables above rather than repeating flags.
+EXPORTER_ARGS=
+
+# Optional monitor example, off by default:
+# EXPORTER_ARGS="--evm-metrics --replica-metrics --peer-latency"
+# --evm-metrics: EVM blocks/receipts and accounts.
+# --replica-metrics: transactions parsed from replica_cmds.
+# --validator-rtt: validator IP/RTT monitoring.
+# --peer-latency: TCP probes to known peers, with persistent peer history.
+# --binary-metrics: compare local hl-visor to the published binary over the network.
+#
+# Local monitor switches, on by default; use =false to disable:
+# --process-metrics: hl-node/hl-visor process liveness and resource usage.
+# --child-stderr-metrics: hl-visor child crash artifacts.
+# --visor-metrics: visor sync state.
+# --node-state-metrics: persisted checkpoint/freeze heights.
+# --disk-metrics: node directory sizes and filesystem capacity.
+# --operator-config-metrics: validator operator configuration.
+# --crit-msg-metrics: bug!/crit! counts and locations.
+#
+# Logging example: debug, info (default), warning or error.
+# EXPORTER_ARGS="--log-level=debug"
+#
+# OTLP/HTTP example. --otlp needs --otlp-endpoint, --alias and a configured CHAIN.
+# EXPORTER_ARGS="--otlp --otlp-endpoint=collector.example:4318 --alias=my-node"
+# Add --otlp-insecure only for an HTTP collector. TLS is the default.
+# These are alternate examples: combine desired flags into one EXPORTER_ARGS.
+# HOME is supplied by the unit as /var/lib/hyperliquid-exporter; leave it unchanged.

@@ -1,0 +1,15 @@
+Source: @PACKAGE@
+Section: net
+Priority: optional
+Maintainer: @MAINTAINER@
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+Homepage: https://github.com/dwellir-public/hyperliquid-exporter
+
+Package: @PACKAGE@
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, adduser, ca-certificates, systemd (>= 249)
+Description: Prometheus metrics exporter for Hyperliquid blockchain nodes
+ Reads local Hyperliquid node state and exposes metrics on port 8086.
+ Includes an unprivileged systemd service and optional OTLP export.

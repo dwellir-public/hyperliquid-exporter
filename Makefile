@@ -5,7 +5,7 @@ COMMIT  := $(shell git rev-parse --short HEAD)
 VERSION := $(shell cat VERSION)
 VERSION_LABEL ?= $(VERSION)
 
-.PHONY: build clean explain fmt lint test
+.PHONY: build clean explain fmt lint test deb test-deb
 
 .DEFAULT_GOAL := explain
 
@@ -20,6 +20,8 @@ explain:
 	@echo ""
 	@echo "Targets:"
 	@echo "  build            - Build the binary for the host OS/Arch."
+	@echo "  deb              - Build a native Ubuntu 24.04 Debian package (DEB_ARGS='...')."
+	@echo "  test-deb         - Test package construction and archive contents."
 	@echo "  clean            - Clean up the build directory."
 	@echo "  fmt              - Format the code."
 	@echo "  lint             - Run golangci-lint (configuration in .golangci.yml)."
@@ -40,6 +42,12 @@ endif
 build:
 	@echo "==> Building $(BINARY_NAME)..."
 	@go build -ldflags "-X main.buildTimeUTC=$(BUILD_TIME_UTC) -X main.commit=$(COMMIT) -X main.version=$(VERSION_LABEL)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/hyperliquid-exporter
+
+deb:
+	python3 packaging/ubuntu/build.py $(DEB_ARGS)
+
+test-deb:
+	python3 -m unittest discover -s packaging/ubuntu/tests -v
 
 clean:
 	@echo "Cleaning up..."

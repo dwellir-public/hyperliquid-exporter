@@ -1,0 +1,23 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_configure override_dh_auto_build override_dh_auto_test:
+
+override_dh_auto_install:
+	cp -a payload/. debian/@PACKAGE@/
+
+override_dh_installsystemd:
+	dh_installsystemd --no-enable --no-start --restart-after-upgrade
+
+override_dh_fixperms:
+	dh_fixperms
+	chmod 0600 debian/@PACKAGE@/etc/default/@SERVICE@
+
+override_dh_strip:
+	dh_strip --no-automatic-dbgsym
+
+# Go's compressed DWARF is not supported by Noble's dwz; dh_strip below
+# removes debugging sections from the packaged copy instead.
+override_dh_dwz:

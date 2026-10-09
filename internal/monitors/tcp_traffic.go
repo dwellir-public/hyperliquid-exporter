@@ -258,8 +258,7 @@ func (m *TCPTrafficMonitor) processFile(filePath string, offset int64, seeding b
 			// replayed history was already counted before the restart
 			if !seeding {
 				stage := "record"
-				var perr *tcpTrafficParseError
-				if errors.As(err, &perr) {
+				if perr, ok := errors.AsType[*tcpTrafficParseError](err); ok {
 					stage = perr.stage
 				}
 				metrics.IncrementParseErrors(tcpTrafficStream, stage)

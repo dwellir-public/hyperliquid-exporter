@@ -88,8 +88,7 @@ func tickOperatorConfig(root string) bool {
 			return false
 		}
 		stage := "read"
-		var oerr *operatorConfigError
-		if errors.As(err, &oerr) {
+		if oerr, ok := errors.AsType[*operatorConfigError](err); ok {
 			stage = oerr.stage
 		}
 		metrics.IncrementSourceErrors(operatorConfigStream, stage)

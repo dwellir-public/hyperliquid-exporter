@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -200,14 +201,14 @@ func IncrementSourceErrors(stream, stage string) {
 }
 
 func seriesKey(labels []attribute.KeyValue) string {
-	key := ""
+	var key strings.Builder
 	for i, l := range labels {
 		if i > 0 {
-			key += "\x00"
+			key.WriteString("\x00")
 		}
-		key += l.Value.String()
+		key.WriteString(l.Value.String())
 	}
-	return key
+	return key.String()
 }
 
 // Read-side accessors, mainly for tests

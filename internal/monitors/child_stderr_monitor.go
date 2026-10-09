@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"time"
@@ -119,9 +120,7 @@ func tickChildStderr(root string, seen map[string]*childStderrState) bool {
 	}
 
 	clear(seen)
-	for path, state := range next {
-		seen[path] = state
-	}
+	maps.Copy(seen, next)
 	publishChildStderr(seen)
 	metrics.SetSourceUp(childStderrStream, true)
 	metrics.MarkSourceSample(childStderrStream, time.Now())

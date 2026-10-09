@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Upgraded dependencies:
+  - Go 1.27.2
+  - golangci-lint 2.14.0
+
 ## [2.5.1] - 2026-10-05
 
 Ports upstream v4.1.2 to v4.1.4.

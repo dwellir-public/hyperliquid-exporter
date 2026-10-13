@@ -9,9 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Ports upstream v4.1.5.
 
-### Security
+### Changed
 
-- Built with Go 1.26.9 and golang.org/x/net v0.61.0, picking up the October Go security fixes including the HTTP/2 server crash (GO-2026-6617)
+- Upgraded dependencies:
+  - Go 1.27.2
+  - golangci-lint 2.14.0
+  - golang.org/x/net 0.61.0 (GO-2026-6603, GO-2026-6610, GO-2026-6611, GO-2026-6612, GO-2026-6617)
+  - OpenTelemetry 1.47.0 (Prometheus exporter 0.69.0)
+  - prometheus/client_golang 1.25.0
 
 ## [2.5.1] - 2026-10-05
 

@@ -143,8 +143,11 @@ For anyone tracing a ported item back to its upstream source (`git show <hash>` 
 | v4.1.2 | 2026-09-26 | `5816feb` |
 | v4.1.3 | 2026-09-26 | `0fe7ea6`, `7ddc96f` |
 | v4.1.4 | 2026-10-02 | `a7ca9bb`, `e5c23df`, `1f8d81c` |
+| v4.1.5 | 2026-10-09 | `f9d9b3d`, `8e69ba3`, `9674a51`, `d4b3228`, `e9f4b09`, `1fbcd75` |
 
 **Addendum, 2026-10-05 (NOD-5173):** v4.1.2 to v4.1.4 ported on `chore/port-4.1.4`: the `validatorL1Status` and `voteAbciDigest` action types and heartbeat `executed_round` parsing with duplicate and conflict rejection. Unlike upstream, a heartbeat with no round field is still accepted, because older builds send none. Skipped: the grpc, x/net and x/text bumps (ours were already newer) and upstream's changelog-driven release notes (we use git-cliff).
+
+**Addendum, 2026-10-13 (NOD-5280):** v4.1.5 ported on `chore/port-4.1.5`: only its Go and x/net security bump, already covered on main by the Go 1.27.2 and x/net v0.60.0 upgrade; a further `go get -u` took x/net to v0.61.0. Skipped: the consensus RPC request/response and mempool origin parsing (we have neither monitor) and the hourly-discovery replay fix (`utils.LatestFile` already returns directory read errors and `streamTailer` keeps its current file on error).
 
 Upstream paths differ from ours: `cmd/hl-exporter`, `internal/evm/parser.go`, `internal/monitors/stream.go`, `internal/utils/latest_files.go`. Their rationale for each metric lives in `HL_NODE_METRICS_AUDIT.md`, migration notes in `UPGRADING.md`.
 

@@ -1,0 +1,5 @@
+@PACKAGE@ (@VERSION@) noble; urgency=medium
+
+  * Package the upstream binary with an unprivileged systemd service.
+
+ -- @MAINTAINER@  @DATE@

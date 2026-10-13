@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+# --no-start suppresses debhelper's stop-on-remove snippet too.
+if [ "$1" = remove ] && [ -z "${DPKG_ROOT:-}" ] && [ -d /run/systemd/system ]; then
+    deb-systemd-invoke stop @SERVICE@.service >/dev/null || true
+fi
+
+#DEBHELPER#

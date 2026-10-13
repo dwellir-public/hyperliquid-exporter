@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -9,6 +10,7 @@ import (
 )
 
 type Config struct {
+	StateDir               string // optional exporter-owned persistence directory
 	HomeDir                string
 	NodeHome               string
 	BinaryHome             string
@@ -33,6 +35,15 @@ type Config struct {
 	EnableCritMsg          bool // bug! and crit! counters from crit_msg_stats
 	EnableBinaryMetrics    bool // compare local hl-visor against the published one (network)
 	LogLevel               string
+}
+
+// PeerDataDir separates exporter persistence from node files when configured.
+// Existing standalone deployments keep their cache beside NODE_HOME.
+func (c Config) PeerDataDir() string {
+	if c.StateDir != "" {
+		return c.StateDir
+	}
+	return filepath.Join(filepath.Dir(c.NodeHome), ".hyperliquid-exporter")
 }
 
 type Flags struct {
@@ -91,6 +102,7 @@ func LoadConfig(flags *Flags) Config {
 
 	if flags == nil {
 		return Config{
+			StateDir:               os.Getenv("EXPORTER_STATE_DIR"),
 			NodeHome:               nodeHome,
 			BinaryHome:             binaryHome,
 			NodeBinary:             nodeBinary,
@@ -101,6 +113,7 @@ func LoadConfig(flags *Flags) Config {
 	}
 
 	config := Config{
+		StateDir:               os.Getenv("EXPORTER_STATE_DIR"),
 		NodeHome:               nodeHome,
 		BinaryHome:             binaryHome,
 		NodeBinary:             nodeBinary,

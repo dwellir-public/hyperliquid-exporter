@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Ports upstream v4.1.5.
+
+### Security
+
+- Built with Go 1.26.9 and golang.org/x/net v0.61.0, picking up the October Go security fixes including the HTTP/2 server crash (GO-2026-6617)
+
 ## [2.5.1] - 2026-10-05
 
 Ports upstream v4.1.2 to v4.1.4.

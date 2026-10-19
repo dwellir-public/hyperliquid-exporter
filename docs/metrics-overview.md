@@ -166,7 +166,7 @@ When the parent changes, the old peer's labeled metrics are removed and the swit
 | `hl_consensus_validator_active_status` | Gauge | `validator`, `signer`, `name` | Validator active status (0=inactive, 1=active) | - |
 | `hl_consensus_validator_count` | Gauge | - | Total number of validators | - |
 | `hl_consensus_validator_jailed_status` | Gauge | `validator`, `signer`, `name` | Validator jail status (0=not jailed, 1=jailed) | - |
-| `hl_consensus_validator_rtt` | Gauge | `validator`, `moniker`, `ip` | Validator response time in milliseconds | Requires RTT monitoring enabled (auto-enabled on validator nodes) |
+| `hl_consensus_validator_rtt` | Gauge | `validator`, `moniker`, `ip` | Validator response time in milliseconds | `--validator-rtt` |
 | `hl_consensus_validator_stake` | Gauge | `validator`, `signer`, `moniker` | Stake amount per validator | - |
 
 The above are available to all node types, while the below metrics require access to consensus (running a validator)

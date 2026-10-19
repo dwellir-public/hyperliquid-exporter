@@ -2,6 +2,7 @@ package metrics
 
 type MetricsConfig struct {
 	EnablePrometheus bool
+	MetricsAddr      string
 	EnableOTLP       bool
 	OTLPEndpoint     string
 	OTLPInsecure     bool

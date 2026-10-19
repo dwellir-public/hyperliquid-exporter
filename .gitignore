@@ -6,9 +6,6 @@
 /hyperliquid-exporter-*
 bin/
 
-# Ignore hl-python-venv directory
-hl-python-venv/
-
 # Ignore local Hyperliquid node data
 hl/
 

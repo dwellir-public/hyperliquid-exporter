@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Ports upstream v4.1.5.
 
+### Added
+
+- `--metrics-addr` sets the listen address of the Prometheus endpoint (default `:8086`)
+- Releases publish a `hyperliquid-exporter-vX.Y.Z.sha256` checksum next to the binary
+
 ### Changed
 
 - Upgraded dependencies:

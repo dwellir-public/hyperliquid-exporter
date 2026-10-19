@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -18,6 +19,11 @@ const (
 )
 
 func StartPrometheusServer(ctx context.Context, addr string) error {
+	// net.Listen treats "" as any free port, which no scrape config would find
+	if addr == "" {
+		return errors.New("metrics address is empty")
+	}
+
 	mux := http.NewServeMux()
 
 	// TimeoutHandler buffers the response and safely replies 503 on timeout,

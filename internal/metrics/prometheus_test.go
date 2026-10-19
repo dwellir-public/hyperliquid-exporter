@@ -36,3 +36,7 @@ func TestStartPrometheusServer_Addr(t *testing.T) {
 	// a taken address must fail startup, not leave a metric-less process
 	assert.Error(t, metrics.StartPrometheusServer(t.Context(), addr))
 }
+
+func TestStartPrometheusServer_EmptyAddr(t *testing.T) {
+	assert.Error(t, metrics.StartPrometheusServer(t.Context(), ""))
+}

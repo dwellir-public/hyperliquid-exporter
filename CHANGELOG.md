@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-10-19
+
 Ports upstream v4.1.5.
 
 ### Added
@@ -22,6 +24,10 @@ Ports upstream v4.1.5.
   - golang.org/x/net 0.61.0 (GO-2026-6603, GO-2026-6610, GO-2026-6611, GO-2026-6612, GO-2026-6617)
   - OpenTelemetry 1.47.0 (Prometheus exporter 0.69.0)
   - prometheus/client_golang 1.25.0
+
+### Removed
+
+- Unmaintained Grafana dashboard (`grafana/`)
 
 ## [2.5.1] - 2026-10-05
 
@@ -313,7 +319,8 @@ Initial release post-fork.
 - `--disable-prom` flag (Prometheus now always enabled)
 - `hl_evm_transactions_total` metric (replaced by `hl_evm_tx_type_total`)
 
-[Unreleased]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.5.1...HEAD
+[Unreleased]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.6.0...HEAD
+[2.6.0]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.5.1...v2.6.0
 [2.5.1]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.5.0...v2.5.1
 [2.5.0]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.3.0...v2.4.0

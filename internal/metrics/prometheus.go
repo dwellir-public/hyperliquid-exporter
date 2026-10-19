@@ -17,7 +17,7 @@ const (
 	maxScrapesInFlight = 5
 )
 
-func StartPrometheusServer(ctx context.Context, port int) error {
+func StartPrometheusServer(ctx context.Context, addr string) error {
 	mux := http.NewServeMux()
 
 	// TimeoutHandler buffers the response and safely replies 503 on timeout,
@@ -42,7 +42,7 @@ func StartPrometheusServer(ctx context.Context, port int) error {
 	// WriteTimeout exceeds scrapeTimeout so the handler's 503 is written
 	// before the connection deadline fires; the rest bound slow clients.
 	server := &http.Server{
-		Addr:              fmt.Sprintf(":%d", port),
+		Addr:              addr,
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 		WriteTimeout:      scrapeTimeout + 5*time.Second,
@@ -57,7 +57,7 @@ func StartPrometheusServer(ctx context.Context, port int) error {
 	}
 
 	go func() {
-		logger.Info("Starting Prometheus metrics server on port %d", port)
+		logger.Info("Starting Prometheus metrics server on %s", ln.Addr())
 		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
 			logger.Error("Prometheus server error: %v", err)
 		}

@@ -20,11 +20,11 @@ make clean                # remove bin/
 
 ## CLI Flags
 
-`--chain` (mainnet|testnet), `--log-level`, `--node-home`, `--node-binary`, `--evm-metrics`, `--replica-metrics`, `--validator-rtt`, `--peer-latency`, `--otlp`, `--otlp-endpoint`, `--otlp-insecure`, `--alias`. Config merges env vars (`.env` file via godotenv) with CLI flags.
+`--chain` (mainnet|testnet), `--metrics-addr` (default `:8086`), `--log-level`, `--node-home`, `--node-binary`, `--evm-metrics`, `--replica-metrics`, `--validator-rtt`, `--peer-latency`, `--otlp`, `--otlp-endpoint`, `--otlp-insecure`, `--alias`. Config merges env vars (`.env` file via godotenv) with CLI flags.
 
 ## Architecture
 
-**Prometheus metrics exporter for Hyperliquid blockchain nodes.** Reads node state from local files (block times, replica commands, EVM blocks, consensus logs) and exposes 80+ metrics on `:8086/metrics`. Optional OTLP export.
+**Prometheus metrics exporter for Hyperliquid blockchain nodes.** Reads node state from local files (block times, replica commands, EVM blocks, consensus logs) and exposes 80+ metrics on `/metrics` (`--metrics-addr`, default `:8086`). Optional OTLP export.
 
 ### Startup flow
 

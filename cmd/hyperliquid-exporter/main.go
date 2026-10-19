@@ -74,6 +74,7 @@ func main() {
 		printBuildInfo(w)
 	}
 
+	metricsAddr := startCmd.String("metrics-addr", ":8086", "Listen address for the Prometheus /metrics endpoint")
 	logLevel := startCmd.String("log-level", "info", "Log level (debug, info, warning, error)")
 	enableOTLP := startCmd.Bool("otlp", false, "Enable OTLP export")
 	otlpEndpoint := startCmd.String("otlp-endpoint", "", "OTLP endpoint (required when OTLP is enabled)")
@@ -169,6 +170,7 @@ func main() {
 	// Initialize metrics configuration
 	metricsConfig := metrics.MetricsConfig{
 		EnablePrometheus: true, // Always enable Prometheus - it's the core functionality
+		MetricsAddr:      *metricsAddr,
 		EnableOTLP:       *enableOTLP,
 		OTLPEndpoint:     *otlpEndpoint,
 		OTLPInsecure:     *otlpInsecure,

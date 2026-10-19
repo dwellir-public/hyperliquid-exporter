@@ -1,6 +1,6 @@
-// Package actiontypes owns the bounded action-type vocabulary shared by
-// replica_cmds and split-client mempool records. Raw upstream strings must pass
-// through Normalize before they may become metric labels.
+// Package actiontypes owns the bounded action-type vocabulary for
+// replica_cmds records. Raw upstream strings must pass through Normalize
+// before they may become metric labels.
 package actiontypes
 
 const Other = "other"

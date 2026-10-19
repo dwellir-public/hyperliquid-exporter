@@ -44,7 +44,7 @@ Settled during the 2026-09 port; apply them to every later review so they are no
 - **Names.** Existing metrics keep our names. Metrics ported fresh use the upstream name verbatim, so upstream alert rules for them apply unchanged. Document the upstream origin in `docs/metrics-overview.md`; `BREAKING_CHANGES.md` is only for renames of existing metrics.
 - **Flags.** One flag per new monitor. Default on for monitors that read only local files or procfs, default off for anything that touches the network. No umbrella flag. Validator-only monitors start on `config.IsValidator`, no extra flag.
 - **Source health.** Ported monitors use the generic `hl_exporter_source_up`, `hl_exporter_source_sample_age_seconds`, `hl_exporter_parse_errors_total{stream,stage}` and `hl_exporter_source_errors_total{stream,stage}` envelope, not upstream's per-monitor `*_scan_up`, `*_walk_up`, `*_errors_total` and `*_last_observation_age_seconds` gauges. Strip upstream's `RegisterSource`/`MarkSource*` calls when lifting a monitor.
-- **Not adopted, do not re-review:** the v4.0.6 metric renames; `stream.go`, `source_state.go`, `health.go` wholesale; the `tokio_runtime`, `tcp_lz4`, `tmp_dir`, `subsystem_steps`, `consensus_rpc`, `validator_connections`, `peer_set`, `info_probe`, `log_lines`, `public_ip`, `optional_streams`, `rate_limited`, `replay` and `replica_runs` monitors; alert rules (managed centrally); generated metric docs; rebasing or re-forking.
+- **Not adopted, do not re-review:** the v4.0.6 metric renames; `stream.go`, `source_state.go`, `health.go` wholesale; the `tokio_runtime`, `tcp_lz4`, `tmp_dir`, `subsystem_steps`, `consensus_rpc`, `validator_connections`, `peer_set`, `info_probe`, `log_lines`, `mempool`, `public_ip`, `optional_streams`, `rate_limited`, `replay` and `replica_runs` monitors; alert rules (managed centrally); generated metric docs; rebasing or re-forking.
 - **CI and release.** House practice in sibling repos (`iris`, `hyperliquid-l1-gateway`) sets the bar, not upstream. Rejected so far: `go mod tidy -diff`, standalone `go vet`/staticcheck, arm64 builds, SHA-pinned actions, dependabot, actionlint, `GOTOOLCHAIN: local`, checksums.
 
 ## Review log
@@ -52,3 +52,4 @@ Settled during the 2026-09 port; apply them to every later review so they are no
 | Reviewed | Upstream release | SHA | Outcome |
 |---|---|---|---|
 | 2026-09-10 | v4.1.1 | `b150dcc` | Full review, ported over six phases; see `docs/reports/upstream-port-v3-to-v4.md` |
+| 2026-10-19 | v4.1.7 | `8676e55` | v4.1.5 to v4.1.7: nothing applicable. Mempool and consensus RPC fixes target monitors we do not run; hourly discovery fix already covered by `utils.LatestFile`; dependency bumps already newer |

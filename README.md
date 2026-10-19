@@ -10,13 +10,14 @@ A Prometheus exporter for Hyperliquid node operators. It reads the files a runni
 
 ## Install
 
-Each [release](https://github.com/dwellir-public/hyperliquid-exporter/releases) publishes a Linux amd64 binary named `hyperliquid-exporter-vX.Y.Z`:
+Each [release](https://github.com/dwellir-public/hyperliquid-exporter/releases) publishes a Linux amd64 binary named `hyperliquid-exporter-vX.Y.Z` with a `sha256sum` checksum file alongside it (releases after v2.5.1):
 
 ```bash
-VERSION=v2.5.1
-curl -fLo hyperliquid-exporter \
-  "https://github.com/dwellir-public/hyperliquid-exporter/releases/download/$VERSION/hyperliquid-exporter-$VERSION"
-sudo install -m 0755 hyperliquid-exporter /usr/local/bin/
+VERSION=vX.Y.Z    # pick from the releases page
+BASE=https://github.com/dwellir-public/hyperliquid-exporter/releases/download/$VERSION
+curl -fL -O "$BASE/hyperliquid-exporter-$VERSION" -O "$BASE/hyperliquid-exporter-$VERSION.sha256"
+sha256sum -c "hyperliquid-exporter-$VERSION.sha256"
+sudo install -m 0755 "hyperliquid-exporter-$VERSION" /usr/local/bin/hyperliquid-exporter
 hyperliquid-exporter --version
 ```
 

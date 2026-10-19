@@ -267,6 +267,16 @@ jobs:
           "$BIN" --version | tee /tmp/version.txt
           grep -qF "version $LABEL " /tmp/version.txt
 
+      - name: Write checksum
+        shell: bash
+        working-directory: ./bin
+        run: |
+          set -euo pipefail
+          BIN="hyperliquid-exporter-${{ steps.compute_tag.outputs.tag }}"
+          # Bare filename so `sha256sum -c` works next to the downloaded binary.
+          sha256sum "$BIN" > "$BIN.sha256"
+          sha256sum -c "$BIN.sha256"
+
       - name: Create Git tag
         shell: bash
         run: |
@@ -322,7 +332,9 @@ jobs:
           body:             ${{ steps.compute_tag.outputs.is_prerelease == 'true'
                               && steps.git-cliff-rc.outputs.content
                               || steps.git-cliff-final.outputs.content }}
-          files:            ./bin/hyperliquid-exporter-${{ steps.compute_tag.outputs.tag }}
+          files: |
+            ./bin/hyperliquid-exporter-${{ steps.compute_tag.outputs.tag }}
+            ./bin/hyperliquid-exporter-${{ steps.compute_tag.outputs.tag }}.sha256
           prerelease:       ${{ steps.compute_tag.outputs.is_prerelease }}
           overwrite_files:  true  # rerun resilience
           make_latest:      ${{ steps.compute_tag.outputs.is_prerelease == 'false' }}  # finals only

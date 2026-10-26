@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Upgraded dependencies:
   - Go 1.27.3 (GO-2026-6809)
 
+### Fixed
+
+- Current hl-node `gossip_connections` records (peer limit, no-quorum, disconnect, abci state and endpoint-only stream records) were rejected as parse errors; they now count in `hl_p2p_gossip_events_total`
+- `cDeposit2` staking deposits were counted as `other`; they now have their own `type` label under the `transfer` category
+
 ## [2.6.0] - 2026-10-19
 
 Ports upstream v4.1.5.

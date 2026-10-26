@@ -85,7 +85,7 @@ Metrics marked with `--replica-metrics` also require hl-node to be running with 
 | `hl_p2p_incoming_peers_active` | Gauge | - | Number of incoming peers seen in last 5 minutes | gossip_rpc logs |
 | `hl_p2p_child_peer_connected` | Gauge | `peer_ip`, `verified` | Whether a child peer is connected (1) or absent (0) | gossip_rpc logs |
 | `hl_p2p_child_peer_connections` | Gauge | `peer_ip` | Number of connections per child peer | gossip_rpc logs |
-| `hl_p2p_stream_connections_total` | Counter | `peer_ip`, `type` | Total stream connections per peer IP and type | gossip_connections logs, `--peer-latency` |
+| `hl_p2p_stream_connections_total` | Counter | `peer_ip`, `type` | Total stream connections per peer IP and type; `type` is empty for records without a stream field | gossip_connections logs, `--peer-latency` |
 | `hl_p2p_verifications_total` | Counter | `peer_ip` | Total gossip RPC verifications per peer IP | gossip_connections logs, `--peer-latency` |
 | `hl_p2p_gossip_events_total` | Counter | `event_type` | Gossip connection events by tag, counted after exporter start. `event_type` is one of 15 allowlisted snake_case tags or `other` | gossip_connections logs |
 | `hl_p2p_gossip_unknown_events_total` | Counter | - | Gossip connection events whose tag is not in the allowlist. A rising value means hl-node added an event type | gossip_connections logs |

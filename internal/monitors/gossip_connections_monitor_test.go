@@ -236,6 +236,7 @@ func TestParseGossipConnectionLine(t *testing.T) {
 		{"handle stream blank endpoint", `["2026-10-24T06:00:00",["handle_stream_connection"," "]]`, "", true, "payload"},
 		{"handle stream null endpoint", `["2026-10-24T06:00:00",["handle_stream_connection",null]]`, "", true, "payload"},
 		{"handle stream arity", `["2026-03-30T05:00:03.399",["handle_stream_connection"]]`, "", true, "payload"},
+		{"handle stream extra field", `["2026-10-24T06:00:00",["handle_stream_connection","203.0.113.1:4000","gossip",true]]`, "", true, "payload"},
 		{"performing checks no stream field", `["2026-10-24T06:00:00",["performing checks on stream","203.0.113.1"]]`, "", true, "payload"},
 		{"no quorum uint", `["2026-10-25T20:00:00",["closing gossip stream because no quorum yet",{"Ip":"192.0.2.1"},1]]`, "closing_gossip_stream_no_quorum_yet", true, ""},
 		{"no quorum negative", `["2026-10-25T20:00:00",["closing gossip stream because no quorum yet",{"Ip":"192.0.2.1"},-1]]`, "", true, "payload"},

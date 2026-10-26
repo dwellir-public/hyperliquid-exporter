@@ -294,6 +294,14 @@ jobs:
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists; skipping tag creation."
           else
+            # GITHUB_TOKEN lacks the workflows permission, so GitHub rejects a
+            # tag whose workflow files differ from main; that happens when main
+            # moves mid-release. Fail with the cause instead of a bare rejection.
+            git fetch --quiet origin main
+            if ! git diff --quiet HEAD origin/main -- .github/workflows; then
+              echo "::error::main moved to $(git rev-parse --short origin/main) during the release and changed .github/workflows; GITHUB_TOKEN cannot tag a commit whose workflows differ from main. Re-dispatch the release on current main."
+              exit 1
+            fi
             git tag -a "$TAG" -m "chore(release): $TAG"
             git push origin "$TAG"
           fi

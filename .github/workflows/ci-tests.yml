@@ -1,3 +1,6 @@
+# `ci-ok` is the only job that may ever be a required check, so adding or
+# renaming a job never touches branch protection. This workflow must never gain
+# `on.pull_request.paths`: a skipped required workflow never reports.
 name: CI Tests
 
 on:
@@ -115,3 +118,22 @@ jobs:
             echo ""
             echo "[View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  ci-ok:
+    name: CI OK
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    needs: [actionlint, golangci, unit-tests-race, unit-tests-flaky, govulncheck]
+    if: always() # a failed need would otherwise skip this job, and skipped counts as passing
+    steps:
+      # No job here is ever skipped, so anything but success fails the gate.
+      - name: Check results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for r in $RESULTS; do
+            if [ "$r" != success ]; then
+              echo "::error::Needed job results: $RESULTS"
+              exit 1
+            fi
+          done

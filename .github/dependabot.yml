@@ -1,0 +1,13 @@
+version: 2
+updates:
+  # Bumps the SHA pins in .github/workflows (version in the trailing comment).
+  # The cooldown holds back a tag moved in the last 7 days, the case pinning guards against.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

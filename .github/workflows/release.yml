@@ -41,7 +41,7 @@ jobs:
           echo "::error::Releases must be dispatched from main (got ${{ github.ref }})"
           exit 1
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: get
         run: |
           raw=$(cat VERSION)
@@ -53,7 +53,7 @@ jobs:
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -99,11 +99,11 @@ jobs:
     timeout-minutes: 45
     needs: [version-bump-check]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
 
@@ -117,11 +117,11 @@ jobs:
     timeout-minutes: 45
     needs: [version-bump-check]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
 
@@ -135,19 +135,22 @@ jobs:
     timeout-minutes: 15
     needs: [version-bump-check]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
           args: -v
+
+      - run: go vet ./...
+      - run: make fix-check
 
   govulncheck:
     name: Vulnerability scan
@@ -155,9 +158,9 @@ jobs:
     timeout-minutes: 15
     needs: [version-bump-check]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
 
@@ -177,7 +180,7 @@ jobs:
       version:       ${{ steps.compute_tag.outputs.version }}
       is_prerelease: ${{ steps.compute_tag.outputs.is_prerelease }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -234,17 +237,20 @@ jobs:
             exit 1
           fi
 
-          echo "version=$VERSION"        >> "$GITHUB_OUTPUT"
-          echo "version_label=${TAG#v}"  >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG"                >> "$GITHUB_OUTPUT"
-          echo "is_prerelease=$IS_PRE"   >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$VERSION"
+            echo "version_label=${TAG#v}"
+            echo "tag=$TAG"
+            echo "is_prerelease=$IS_PRE"
+          } >> "$GITHUB_OUTPUT"
           echo "VERSION=$VERSION"        >> "$GITHUB_ENV"
 
           echo "Computed tag: $TAG (prerelease=$IS_PRE)"
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false # build the published binary from a clean cache
 
       - name: Build
         shell: bash
@@ -305,7 +311,7 @@ jobs:
       - name: Generate changelog (RC)
         id: git-cliff-rc
         if: ${{ steps.compute_tag.outputs.is_prerelease == 'true' }}
-        uses: orhun/git-cliff-action@v4
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
         with:
           args: --current --no-exec
         env:
@@ -315,7 +321,7 @@ jobs:
       - name: Generate changelog (final release)
         id: git-cliff-final
         if: ${{ steps.compute_tag.outputs.is_prerelease == 'false' }}
-        uses: orhun/git-cliff-action@v4
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
         with:
           # If no previous final tag, this produces an empty range; optionally
           # fall back to the root commit if you want *all* history instead.
@@ -325,7 +331,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name:         ${{ steps.compute_tag.outputs.tag }}
           name:             hyperliquid-exporter ${{ steps.compute_tag.outputs.tag }}
@@ -337,6 +343,7 @@ jobs:
             ./bin/hyperliquid-exporter-${{ steps.compute_tag.outputs.tag }}.sha256
           prerelease:       ${{ steps.compute_tag.outputs.is_prerelease }}
           overwrite_files:  true  # rerun resilience
+          fail_on_unmatched_files: true  # a missing asset fails before publish
           make_latest:      ${{ steps.compute_tag.outputs.is_prerelease == 'false' }}  # finals only
         env:
           GITHUB_TOKEN: ${{ github.token }}

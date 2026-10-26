@@ -5,7 +5,7 @@ COMMIT  := $(shell git rev-parse --short HEAD)
 VERSION := $(shell cat VERSION)
 VERSION_LABEL ?= $(VERSION)
 
-.PHONY: build clean explain fmt lint test
+.PHONY: actionlint build clean explain fix-check fmt lint test
 
 .DEFAULT_GOAL := explain
 
@@ -19,8 +19,10 @@ explain:
 	@echo "  [V=1]                - Add V=1 for verbose output"
 	@echo ""
 	@echo "Targets:"
+	@echo "  actionlint       - Lint .github/workflows with the digest-pinned actionlint image (Docker required, as in CI)."
 	@echo "  build            - Build the binary for the host OS/Arch."
 	@echo "  clean            - Clean up the build directory."
+	@echo "  fix-check        - Report pending go fix rewrites without applying them (used by CI)."
 	@echo "  fmt              - Format the code."
 	@echo "  lint             - Run golangci-lint (configuration in .golangci.yml)."
 	@echo "  test             - Run unit tests (RACE=1 for race detector)."
@@ -37,6 +39,13 @@ ifdef V
 	TEST_FLAGS += -v
 endif
 
+# Keep in sync with the actionlint step in .github/workflows/ci-tests.yml; bumped by hand.
+ACTIONLINT_IMAGE := rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+
+actionlint:
+	@echo "==> Linting GitHub workflows"
+	@docker run --rm -v "$(CURDIR):/repo" -w /repo $(ACTIONLINT_IMAGE) -color
+
 build:
 	@echo "==> Building $(BINARY_NAME)..."
 	@go build -ldflags "-X main.buildTimeUTC=$(BUILD_TIME_UTC) -X main.commit=$(COMMIT) -X main.version=$(VERSION_LABEL)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/hyperliquid-exporter
@@ -44,6 +53,11 @@ build:
 clean:
 	@echo "Cleaning up..."
 	rm -rf $(BUILD_DIR)
+
+fix-check:
+	@echo "==> Checking for pending go fix rewrites"
+	@out=$$(go fix -diff ./...); rc=$$?; \
+	if [ $$rc -ne 0 ] || [ -n "$$out" ]; then echo "$$out"; echo "FAIL: run go fix ./..."; exit 1; fi
 
 fmt:
 	@echo "==> Formatting code..."

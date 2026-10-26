@@ -1,3 +1,6 @@
+# `ci-ok` is the only job that may ever be a required check, so adding or
+# renaming a job never touches branch protection. This workflow must never gain
+# `on.pull_request.paths`: a skipped required workflow never reports.
 name: CI Tests
 
 on:
@@ -22,28 +25,44 @@ env:
   GOVULNCHECK_VERSION: v1.7.0
 
 jobs:
+  actionlint:
+    name: Workflow lint
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Bumped by hand: Dependabot does not update a docker:// digest. Keep in sync with ACTIONLINT_IMAGE in the Makefile.
+      - uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # 1.7.12
+        with:
+          args: -color
+
   golangci:
     name: Golang CI lint
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
+
+      # go vet runs the analyzers golangci-lint's govet set skips; fix-check
+      # fails on any pending go fix modernizer rewrite.
+      - run: go vet ./...
+      - run: make fix-check
 
   unit-tests-race:
     name: Unit tests (race)
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - run: go mod download
@@ -54,8 +73,8 @@ jobs:
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - run: go mod download
@@ -66,8 +85,8 @@ jobs:
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - run: go install golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }}
@@ -77,7 +96,7 @@ jobs:
     name: CI Summary
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
-    needs: [golangci, unit-tests-race, unit-tests-flaky, govulncheck]
+    needs: [actionlint, golangci, unit-tests-race, unit-tests-flaky, govulncheck]
     if: always() # Always run, even if earlier jobs fail
     steps:
       - name: Write CI summary
@@ -85,6 +104,7 @@ jobs:
           {
             echo "## 🧪 CI Test Summary"
             echo ""
+            echo "- **Workflow lint:** ${{ needs.actionlint.result }}"
             echo "- **Lint:** ${{ needs.golangci.result }}"
             echo "- **Unit (race):** ${{ needs.unit-tests-race.result }}"
             echo "- **Unit (flaky):** ${{ needs.unit-tests-flaky.result }}"
@@ -98,3 +118,22 @@ jobs:
             echo ""
             echo "[View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  ci-ok:
+    name: CI OK
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 5
+    needs: [actionlint, golangci, unit-tests-race, unit-tests-flaky, govulncheck]
+    if: always() # a failed need would otherwise skip this job, and skipped counts as passing
+    steps:
+      # No job here is ever skipped, so anything but success fails the gate.
+      - name: Check results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for r in $RESULTS; do
+            if [ "$r" != success ]; then
+              echo "::error::Needed job results: $RESULTS"
+              exit 1
+            fi
+          done

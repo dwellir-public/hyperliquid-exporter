@@ -1,6 +1,7 @@
 package monitors
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -296,14 +297,23 @@ func validGossipStringArrayPayload(inner []json.RawMessage) bool {
 	return unmarshalRequiredJSON(inner[1], &detail) == nil && strings.TrimSpace(detail) != ""
 }
 
-// rawExactIPObject accepts exactly {"Ip": "<nonempty>"}.
+// rawExactIPObject accepts exactly {"Ip": "<nonempty>"}. It walks tokens
+// instead of decoding into a map, which would silently keep the last of
+// duplicate keys.
 func rawExactIPObject(raw json.RawMessage) bool {
-	var object map[string]json.RawMessage
-	if json.Unmarshal(raw, &object) != nil || len(object) != 1 {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return false
+	}
+	if tok, err := dec.Token(); err != nil || tok != "Ip" {
 		return false
 	}
 	var ip string
-	return unmarshalRequiredJSON(object["Ip"], &ip) == nil && strings.TrimSpace(ip) != ""
+	if err := dec.Decode(&ip); err != nil || strings.TrimSpace(ip) == "" {
+		return false
+	}
+	tok, err := dec.Token()
+	return err == nil && tok == json.Delim('}')
 }
 
 // processFile tails filePath from offset. With seeding set, counters are not

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-10-26
+
 Ports upstream v4.1.8 to v4.1.13.
 
 ### Changed
@@ -331,7 +333,8 @@ Initial release post-fork.
 - `--disable-prom` flag (Prometheus now always enabled)
 - `hl_evm_transactions_total` metric (replaced by `hl_evm_tx_type_total`)
 
-[Unreleased]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.6.0...HEAD
+[Unreleased]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.6.1...HEAD
+[2.6.1]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.6.0...v2.6.1
 [2.6.0]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.5.1...v2.6.0
 [2.5.1]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.5.0...v2.5.1
 [2.5.0]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.4.0...v2.5.0

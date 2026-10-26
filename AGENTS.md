@@ -12,6 +12,8 @@ make test N=16            # run 16 times (CI flaky job)
 make test V=1 N=3         # verbose, run 3 times
 make lint                 # golangci-lint
 make fmt                  # gofmt -s -w .
+make fix-check            # fail on pending go fix rewrites (CI gate)
+make actionlint           # lint .github/workflows (Docker; CI gate)
 make clean                # remove bin/
 
 # Run

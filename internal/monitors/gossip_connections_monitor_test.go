@@ -232,7 +232,39 @@ func TestParseGossipConnectionLine(t *testing.T) {
 		{"evm kvs object only", `["2026-03-30T05:00:09.841",["sending evm kvs",{"Ip":"1.2.3.4"}]]`, "sending_evm_kvs", true, ""},
 		{"verified object only rejected", `["2026-03-30T05:00:09.841",["finished checks",{"Ip":"1.2.3.4"}]]`, "", true, "payload"},
 		{"unknown tag", `["2026-03-30T05:00:09.841",["brand new event",{"Ip":"1.2.3.4"}]]`, "other", false, ""},
-		{"handle stream arity", `["2026-03-30T05:00:03.399",["handle_stream_connection","192.168.108.167:50850"]]`, "", true, "payload"},
+		{"handle stream no stream field", `["2026-10-24T06:00:00",["handle_stream_connection","203.0.113.1:4000"]]`, "handle_stream_connection", true, ""},
+		{"handle stream blank endpoint", `["2026-10-24T06:00:00",["handle_stream_connection"," "]]`, "", true, "payload"},
+		{"handle stream null endpoint", `["2026-10-24T06:00:00",["handle_stream_connection",null]]`, "", true, "payload"},
+		{"handle stream arity", `["2026-03-30T05:00:03.399",["handle_stream_connection"]]`, "", true, "payload"},
+		{"handle stream extra field", `["2026-10-24T06:00:00",["handle_stream_connection","203.0.113.1:4000","gossip",true]]`, "", true, "payload"},
+		{"performing checks no stream field", `["2026-10-24T06:00:00",["performing checks on stream","203.0.113.1"]]`, "", true, "payload"},
+		{"no quorum uint", `["2026-10-25T20:00:00",["closing gossip stream because no quorum yet",{"Ip":"192.0.2.1"},1]]`, "closing_gossip_stream_no_quorum_yet", true, ""},
+		{"no quorum negative", `["2026-10-25T20:00:00",["closing gossip stream because no quorum yet",{"Ip":"192.0.2.1"},-1]]`, "", true, "payload"},
+		{"max peers legacy object", `["2026-10-26T05:00:00",["rejecting gossip stream because max peers reached",{}]]`, "rejecting_gossip_stream_max_peers_reached", true, ""},
+		{"max peers legacy array", `["2026-10-26T05:00:00",["rejecting gossip stream because max peers reached","peer limit",[]]]`, "rejecting_gossip_stream_max_peers_reached", true, ""},
+		{"max peers uint", `["2026-10-26T05:00:00",["rejecting gossip stream because max peers reached",{"Ip":"192.0.2.1"},8]]`, "rejecting_gossip_stream_max_peers_reached", true, ""},
+		{"max peers float", `["2026-10-26T05:00:00",["rejecting gossip stream because max peers reached",{"Ip":"192.0.2.1"},8.5]]`, "", true, "payload"},
+		{"max peers string", `["2026-10-26T05:00:00",["rejecting gossip stream because max peers reached",{"Ip":"192.0.2.1"},"8"]]`, "", true, "payload"},
+		{"max peers empty IP", `["2026-10-26T05:00:00",["rejecting gossip stream because max peers reached",{"Ip":""},8]]`, "", true, "payload"},
+		{"max peers null IP", `["2026-10-26T05:00:00",["rejecting gossip stream because max peers reached",{"Ip":null},8]]`, "", true, "payload"},
+		{"max peers numeric IP", `["2026-10-26T05:00:00",["rejecting gossip stream because max peers reached",{"Ip":1},8]]`, "", true, "payload"},
+		{"max peers extra key", `["2026-10-26T05:00:00",["rejecting gossip stream because max peers reached",{"Ip":"192.0.2.1","extra":0},8]]`, "", true, "payload"},
+		{"max peers duplicate IP", `["2026-10-26T05:00:00",["rejecting gossip stream because max peers reached",{"Ip":"192.0.2.1","Ip":"192.0.2.1"},8]]`, "", true, "payload"},
+		{"max peers lowercase key", `["2026-10-26T05:00:00",["rejecting gossip stream because max peers reached",{"ip":"192.0.2.1"},8]]`, "", true, "payload"},
+		{"greeting duplicate IP", `["2026-03-30T05:00:09.841",["got tcp greeting",{"Ip":"1.2.3.4","Ip":"5.6.7.8"}]]`, "", true, "payload"},
+		{"abci sent legacy", `["2026-10-24T06:00:00",["successfully sent abci_state",{"Ip":"203.0.113.1"},true]]`, "successfully_sent_abci_state", true, ""},
+		{"abci sent duration", `["2026-10-24T06:00:00",["successfully sent abci_state",{"Ip":"203.0.113.1"},true,0.000005]]`, "successfully_sent_abci_state", true, ""},
+		{"abci sent zero", `["2026-10-24T06:00:00",["successfully sent abci_state",{"Ip":"203.0.113.1"},false,0]]`, "successfully_sent_abci_state", true, ""},
+		{"abci sent negative", `["2026-10-24T06:00:00",["successfully sent abci_state",{"Ip":"203.0.113.1"},true,-1]]`, "", true, "payload"},
+		{"abci sent negative zero", `["2026-10-24T06:00:00",["successfully sent abci_state",{"Ip":"203.0.113.1"},true,-0]]`, "", true, "payload"},
+		{"abci sent string suffix", `["2026-10-24T06:00:00",["successfully sent abci_state",{"Ip":"203.0.113.1"},true,"1"]]`, "", true, "payload"},
+		{"abci drop object only", `["2026-10-26T05:00:00",["dropping connection after sending abci state",{"Ip":"192.0.2.1"}]]`, "dropping_connection_after_sending_abci_state", true, ""},
+		{"abci drop empty object", `["2026-10-26T05:00:00",["dropping connection after sending abci state",{}]]`, "", true, "payload"},
+		{"abci drop null suffix", `["2026-10-26T05:00:00",["dropping connection after sending abci state",{"Ip":"192.0.2.1"},null]]`, "", true, "payload"},
+		{"drop legacy", `["2026-03-30T05:00:09.841",["dropping connection","a","b","c","d"]]`, "dropping_connection", true, ""},
+		{"drop reason", `["2026-10-24T09:56:00.242447528",["dropping connection",{"Ip":"203.0.113.1"},"max connection age reached"]]`, "dropping_connection", true, ""},
+		{"drop blank reason", `["2026-10-24T06:00:00",["dropping connection",{"Ip":"203.0.113.1"}," "]]`, "", true, "payload"},
+		{"drop string peer", `["2026-10-24T06:00:00",["dropping connection","203.0.113.1","max connection age reached"]]`, "", true, "payload"},
 		{"not json", `nope`, "", false, "json"},
 		{"outer arity", `["2026-03-30T05:00:03.399"]`, "", false, "shape"},
 		{"bad timestamp", `["soon",["verified gossip rpc",{"Ip":"1.2.3.4"}]]`, "", false, "timestamp"},
@@ -278,4 +310,17 @@ func TestProcessConnectionsFile_PerIPCountersGated(t *testing.T) {
 
 	m = NewGossipConnectionsMonitor(&config.Config{NodeHome: t.TempDir(), EnablePeerLatency: true}, register)
 	assert.True(t, m.perIP)
+}
+
+func TestProcessConnectionsFile_HandleStreamWithoutStreamField(t *testing.T) {
+	initTestMetrics(t)
+	var seen []string
+	m := NewGossipConnectionsMonitor(&config.Config{NodeHome: t.TempDir(), EnablePeerLatency: true}, func(ip string, _ peermon.PeerDirection) {
+		seen = append(seen, ip)
+	})
+	f := writeGossipFile(t, filepath.Join(m.dir, "20261024"),
+		`["2026-10-24T06:00:00",["handle_stream_connection","203.0.113.1:4000"]]`)
+	_, err := m.processFile(f, 0, false)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"203.0.113.1"}, seen)
 }

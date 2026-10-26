@@ -144,10 +144,22 @@ For anyone tracing a ported item back to its upstream source (`git show <hash>` 
 | v4.1.3 | 2026-09-26 | `0fe7ea6`, `7ddc96f` |
 | v4.1.4 | 2026-10-02 | `a7ca9bb`, `e5c23df`, `1f8d81c` |
 | v4.1.5 | 2026-10-09 | `f9d9b3d`, `8e69ba3`, `9674a51`, `d4b3228`, `e9f4b09`, `1fbcd75` |
+| v4.1.6 | 2026-10-17 | `1d297bd` |
+| v4.1.7 | 2026-10-17 | `8676e55` |
+| v4.1.8 | 2026-10-24 | `212ffd3`, `81fe198`, `2734d82` |
+| v4.1.9 | 2026-10-24 | `2f69b1c`, `7a52acb`, `3606a35` |
+| v4.1.10 | 2026-10-26 | `5969e61` |
+| v4.1.11 | 2026-10-26 | `bda1d2b`, `8a2c6d7` |
+| v4.1.12 | 2026-10-26 | `95b2a85`, `53e4ef6` |
+| v4.1.13 | 2026-10-26 | `b117e66`, `fa633c4` |
 
 **Addendum, 2026-10-05 (NOD-5173):** v4.1.2 to v4.1.4 ported on `chore/port-4.1.4`: the `validatorL1Status` and `voteAbciDigest` action types and heartbeat `executed_round` parsing with duplicate and conflict rejection. Unlike upstream, a heartbeat with no round field is still accepted, because older builds send none. Skipped: the grpc, x/net and x/text bumps (ours were already newer) and upstream's changelog-driven release notes (we use git-cliff).
 
 **Addendum, 2026-10-13 (NOD-5280):** v4.1.5 ported on `chore/port-4.1.5`: only its Go and x/net security bump, already covered on main by the Go 1.27.2 and x/net v0.60.0 upgrade; a further `go get -u` took x/net to v0.61.0. Skipped: the consensus RPC request/response and mempool origin parsing (we have neither monitor) and the hourly-discovery replay fix (`utils.LatestFile` already returns directory read errors and `streamTailer` keeps its current file on error).
+
+**Addendum, 2026-10-19:** v4.1.6 and v4.1.7 reviewed, nothing applicable: both change mempool snapshot parsing, and we have no mempool monitor.
+
+**Addendum, 2026-10-26 (NOD-5458 to NOD-5469):** v4.1.8 to v4.1.13 ported on `fix/gossip-shapes`, with the Go 1.27.3 bump for GO-2026-6809 on main: the current `gossip_connections` payload shapes (peer IP plus integer for no-quorum and max-peers, IP-only and IP-plus-reason disconnects, a trailing number on `successfully sent abci_state`, endpoint-only `handle_stream_connection`), duplicate-key rejection in the peer IP object and the `cDeposit2` action type. Skipped: replica response Hash and `setGlobal` parsing (we do not parse responses), the consensus RPC and optional-stream fixes (neither monitor is ours) and upstream's release CI changes.
 
 Upstream paths differ from ours: `cmd/hl-exporter`, `internal/evm/parser.go`, `internal/monitors/stream.go`, `internal/utils/latest_files.go`. Their rationale for each metric lives in `HL_NODE_METRICS_AUDIT.md`, migration notes in `UPGRADING.md`.
 

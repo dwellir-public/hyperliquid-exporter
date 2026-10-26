@@ -1,9 +1,11 @@
 package monitors
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -172,7 +174,14 @@ func parseGossipConnectionLine(line []byte) (ev gossipConnectionEvent, stage str
 
 func validKnownGossipPayload(tag string, inner []json.RawMessage) bool {
 	switch tag {
-	case "handle_stream_connection", "performing checks on stream":
+	case "handle_stream_connection":
+		// testnet also emits the endpoint without a stream field
+		if len(inner) == 2 {
+			var endpoint string
+			return unmarshalRequiredJSON(inner[1], &endpoint) == nil && strings.TrimSpace(endpoint) != ""
+		}
+		fallthrough
+	case "performing checks on stream":
 		if len(inner) != 3 {
 			return false
 		}
@@ -180,18 +189,38 @@ func validKnownGossipPayload(tag string, inner []json.RawMessage) bool {
 		return unmarshalRequiredJSON(inner[1], &endpoint) == nil && unmarshalRequiredJSON(inner[2], &stream) == nil
 	case "closing gossip stream because no quorum yet":
 		// newer builds emit a string plus an array; older ones the
-		// IP-object/bool form. Validation only, never a label
-		return validGossipIPFlagPayload(inner, false) || validGossipStringArrayPayload(inner)
-	case "finished checks", "sending abci_state", "successfully sent abci_state":
+		// IP-object/bool form; current mainnet the IP object plus an
+		// unsigned integer. Validation only, never a label
+		return validGossipIPFlagPayload(inner, false) || validGossipStringArrayPayload(inner) ||
+			validGossipIPUintPayload(inner)
+	case "successfully sent abci_state":
+		// current testnet appends a nonnegative number of unknown units
+		if len(inner) == 4 {
+			var value float64
+			return validGossipIPFlagPayload(inner[:3], false) &&
+				unmarshalRequiredJSON(inner[3], &value) == nil && !math.Signbit(value)
+		}
+		return validGossipIPFlagPayload(inner, false)
+	case "finished checks", "sending abci_state":
 		return validGossipIPFlagPayload(inner, false)
 	case "dropping connection after sending abci state":
-		// third field is a bool on older builds and a short string on current mainnet
+		// third field is a bool on older builds and a short string on current
+		// mainnet, which also emits the IP object alone
+		if len(inner) == 2 {
+			return rawExactIPObject(inner[1])
+		}
 		return validGossipIPBoolOrStringPayload(inner)
 	case "sending evm kvs", "marking node_ip as verified",
 		"closing gossip stream because peer is already connected":
 		// current mainnet emits object-only; older builds add a trailing bool
 		return validGossipIPFlagPayload(inner, true)
 	case "dropping connection":
+		// current mainnet emits the IP object plus a reason string
+		if len(inner) == 3 {
+			var reason string
+			return rawExactIPObject(inner[1]) &&
+				unmarshalRequiredJSON(inner[2], &reason) == nil && strings.TrimSpace(reason) != ""
+		}
 		return len(inner) == 5
 	case "got tcp greeting":
 		if len(inner) == 2 {
@@ -203,6 +232,10 @@ func validKnownGossipPayload(tag string, inner []json.RawMessage) bool {
 		var flag bool
 		return unmarshalRequiredJSON(inner[2], &flag) == nil
 	case "rejecting gossip stream because max peers reached":
+		// current mainnet emits the IP object plus an unsigned integer
+		if validGossipIPUintPayload(inner) {
+			return true
+		}
 		if len(inner) == 2 {
 			return rawJSONObject(inner[1])
 		}
@@ -236,6 +269,14 @@ func validGossipIPFlagPayload(inner []json.RawMessage, allowObjectOnly bool) boo
 	return unmarshalRequiredJSON(inner[2], &flag) == nil
 }
 
+func validGossipIPUintPayload(inner []json.RawMessage) bool {
+	if len(inner) != 3 || !rawExactIPObject(inner[1]) {
+		return false
+	}
+	var value uint64
+	return unmarshalRequiredJSON(inner[2], &value) == nil
+}
+
 func validGossipIPBoolOrStringPayload(inner []json.RawMessage) bool {
 	if len(inner) != 3 || !rawExactIPObject(inner[1]) {
 		return false
@@ -256,14 +297,23 @@ func validGossipStringArrayPayload(inner []json.RawMessage) bool {
 	return unmarshalRequiredJSON(inner[1], &detail) == nil && strings.TrimSpace(detail) != ""
 }
 
-// rawExactIPObject accepts exactly {"Ip": "<nonempty>"}.
+// rawExactIPObject accepts exactly {"Ip": "<nonempty>"}. It walks tokens
+// instead of decoding into a map, which would silently keep the last of
+// duplicate keys.
 func rawExactIPObject(raw json.RawMessage) bool {
-	var object map[string]json.RawMessage
-	if json.Unmarshal(raw, &object) != nil || len(object) != 1 {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return false
+	}
+	if tok, err := dec.Token(); err != nil || tok != "Ip" {
 		return false
 	}
 	var ip string
-	return unmarshalRequiredJSON(object["Ip"], &ip) == nil && strings.TrimSpace(ip) != ""
+	if err := dec.Decode(&ip); err != nil || strings.TrimSpace(ip) == "" {
+		return false
+	}
+	tok, err := dec.Token()
+	return err == nil && tok == json.Delim('}')
 }
 
 // processFile tails filePath from offset. With seeding set, counters are not
@@ -309,7 +359,9 @@ func (m *GossipConnectionsMonitor) discover(ev gossipConnectionEvent, count bool
 	case "handle_stream_connection":
 		var ipPort, connType string
 		_ = json.Unmarshal(ev.payload[1], &ipPort)
-		_ = json.Unmarshal(ev.payload[2], &connType)
+		if len(ev.payload) > 2 {
+			_ = json.Unmarshal(ev.payload[2], &connType)
+		}
 		peerIP, _, err := net.SplitHostPort(ipPort)
 		if err != nil {
 			peerIP = ipPort

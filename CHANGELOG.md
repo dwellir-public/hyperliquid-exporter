@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Current hl-node `gossip_connections` records (peer limit, no-quorum, disconnect, abci state and endpoint-only stream records) were rejected as parse errors; they now count in `hl_p2p_gossip_events_total`
+- Current hl-node `gossip_connections` records (peer limit, no-quorum, disconnect, abci state and endpoint-only stream records) were rejected as parse errors; they now count in `hl_p2p_gossip_events_total`. Endpoint-only stream records also feed `--peer-latency` peer discovery and `hl_p2p_stream_connections_total` with an empty `type`
 - `cDeposit2` staking deposits were counted as `other`; they now have their own `type` label under the `transfer` category
 
 ## [2.6.0] - 2026-10-19

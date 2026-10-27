@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.2] - 2026-10-27
+
+Ports upstream v4.1.14 to v4.1.17.
+
 ### Fixed
 
 - `govPropose` and `govVote` governance actions were counted as `other`; they now have their own `type` label under the `governance` category
@@ -337,7 +341,8 @@ Initial release post-fork.
 - `--disable-prom` flag (Prometheus now always enabled)
 - `hl_evm_transactions_total` metric (replaced by `hl_evm_tx_type_total`)
 
-[Unreleased]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.6.1...HEAD
+[Unreleased]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.6.2...HEAD
+[2.6.2]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.6.1...v2.6.2
 [2.6.1]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.6.0...v2.6.1
 [2.6.0]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.5.1...v2.6.0
 [2.5.1]: https://github.com/dwellir-public/hyperliquid-exporter/compare/v2.5.0...v2.5.1

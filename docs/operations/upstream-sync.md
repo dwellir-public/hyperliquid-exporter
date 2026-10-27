@@ -2,7 +2,7 @@
 
 This fork descends from [validaoxyz/hyperliquid-exporter](https://github.com/validaoxyz/hyperliquid-exporter) v2.0.0 and is intentionally divergent: it keeps its own metric names, peer monitoring (`internal/peermon`) and OTel-first instrument declarations. The two histories share no merge base, so nothing cherry-picks. Every upstream change is ported by hand at content level, or deliberately skipped.
 
-Run this monthly, or whenever upstream tags a release.
+Run this monthly, or whenever upstream tags a release. The `upstream-catchup` skill (`.claude/skills/upstream-catchup/`) runs steps 1 to 3 and presents the result for a decision.
 
 ## Steps
 
@@ -16,7 +16,7 @@ Run this monthly, or whenever upstream tags a release.
 2. Diff the consumed surface since the last reviewed SHA (table below) and read the newer `CHANGELOG.md` sections:
 
    ```sh
-   LAST=b150dcc
+   LAST=<SHA of the last review log row>
    git diff --stat $LAST..upstream/main -- internal/monitors internal/replica internal/evm internal/actiontypes internal/metrics
    git show upstream/main:CHANGELOG.md | sed -n '1,120p'
    git show upstream/main:UPGRADING.md

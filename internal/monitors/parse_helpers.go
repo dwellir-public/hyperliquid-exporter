@@ -41,8 +41,9 @@ func rawJSONArray(raw json.RawMessage) bool {
 }
 
 func rawJSONObject(raw json.RawMessage) bool {
-	var object map[string]json.RawMessage
-	return json.Unmarshal(raw, &object) == nil && object != nil
+	trimmed := bytes.TrimSpace(raw)
+	// Validate the original bytes because TrimSpace also removes non-JSON whitespace.
+	return len(trimmed) > 0 && trimmed[0] == '{' && json.Valid(raw)
 }
 
 // parseVisorTime accepts the timestamp shapes hl-node log streams use

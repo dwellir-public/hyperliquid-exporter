@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `govPropose` and `govVote` governance actions were counted as `other`; they now have their own `type` label under the `governance` category
+
 ## [2.6.1] - 2026-10-26
 
 Ports upstream v4.1.8 to v4.1.13.

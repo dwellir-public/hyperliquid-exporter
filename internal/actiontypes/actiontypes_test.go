@@ -11,6 +11,8 @@ func TestNormalize(t *testing.T) {
 		"voteAbciDigest":    "voteAbciDigest",
 		"cDeposit":          "cDeposit",
 		"cDeposit2":         "cDeposit2",
+		"govPropose":        "govPropose",
+		"govVote":           "govVote",
 		"cDeposit3":         Other,
 		"":                  Other,
 		"bogusAction":       Other,
@@ -33,6 +35,8 @@ func TestCategory(t *testing.T) {
 		"voteAbciDigest":    "governance",
 		"cDeposit":          "transfer",
 		"cDeposit2":         "transfer",
+		"govPropose":        "governance",
+		"govVote":           "governance",
 		Other:               Other,
 	} {
 		if got := Category(action); got != want {
